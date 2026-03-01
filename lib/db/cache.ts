@@ -187,15 +187,15 @@ export async function getCacheStats() {
     
     const totalStmt = database.prepare(`SELECT COUNT(*) as count FROM translation_cache`)
     const totalResult = totalStmt.getAsObject([])
-    const total = totalResult?.count || 0
+    const total = (totalResult?.count as number) || 0
     
     const hitsStmt = database.prepare(`SELECT SUM(hits) as total_hits FROM translation_cache`)
     const hitsResult = hitsStmt.getAsObject([])
-    const totalHits = hitsResult?.total_hits || 0
+    const totalHits = (hitsResult?.total_hits as number) || 0
     
     const sizeStmt = database.prepare(`SELECT SUM(LENGTH(source_text) + LENGTH(translated_text)) as total_size FROM translation_cache`)
     const sizeResult = sizeStmt.getAsObject([])
-    const totalSize = sizeResult?.total_size || 0
+    const totalSize = (sizeResult?.total_size as number) || 0
     
     const oldestStmt = database.prepare(`SELECT MIN(created_at) as oldest FROM translation_cache`)
     const oldestResult = oldestStmt.getAsObject([])
@@ -213,8 +213,8 @@ export async function getCacheStats() {
       total_entries: total,
       total_hits: totalHits,
       total_size_bytes: totalSize,
-      total_size_mb: (totalSize / (1024 * 1024)).toFixed(2),
-      oldest_entry: oldestResult?.oldest ? new Date(oldestResult.oldest * 1000).toISOString() : null,
+      total_size_mb: ((totalSize as number) / (1024 * 1024)).toFixed(2),
+      oldest_entry: oldestResult?.oldest ? new Date((oldestResult.oldest as number) * 1000).toISOString() : null,
       by_engine: byEngine,
     }
   } catch (error) {
@@ -241,7 +241,8 @@ export async function purgeOldCache(maxAgeDays: number = 30): Promise<number> {
     await saveDB()
     
     // Pobierz liczbę usuniętych
-    const changes = deleteStmt.getAsObject([])?.changes || 0
+    const result = deleteStmt.getAsObject([])
+    const changes = (result?.changes as number) || 0
     console.log(`✓ Purged ${changes} old cache entries`)
     
     return changes
@@ -260,7 +261,8 @@ export async function clearCache(): Promise<number> {
     
     await saveDB()
     
-    const changes = deleteStmt.getAsObject([])?.changes || 0
+    const result = deleteStmt.getAsObject([])
+    const changes = (result?.changes as number) || 0
     console.log(`✓ Cleared ${changes} cache entries`)
     
     return changes
