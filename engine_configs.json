@@ -1,0 +1,13 @@
+{
+  "libretranslate": {
+    "name": "LibreTranslate",
+    "icon": "bi-translate",
+    "iconColor": "text-blue-400",
+    "iconBg": "bg-blue-500/20",
+    "description": "Open source, lokalny serwer",
+    "server": "http://mojnas123.ddns.net:5010",
+    "api_key": "",
+    "enabled": true,
+    "popular": true
+  }
+}
