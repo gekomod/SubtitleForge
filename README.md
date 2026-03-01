@@ -2,6 +2,8 @@
 
 Cinema-grade AI subtitle translation with support for 11 AI engines, real-time preview, and local subtitle library.
 
+[![Netlify Status](https://api.netlify.com/api/v1/badges/804e4da8-be01-40a3-8fef-4133921ca9ad/deploy-status)](https://app.netlify.com/projects/teal-kangaroo-9931e5/deploys)
+
 ## ✨ Features
 
 ### 🎯 Core Functionality
