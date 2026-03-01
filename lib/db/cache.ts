@@ -1,37 +1,86 @@
-import Database from 'better-sqlite3'
+import initSqlJs, { Database as SqlJsDatabase } from 'sql.js'
 import path from 'path'
-import fs from 'fs'
+import fs from 'fs/promises'
 
 const CACHE_DB_PATH = process.env.CACHE_DB_PATH || path.join(process.cwd(), 'data', 'cache.db')
 
-// Ensure directory exists
-const dbDir = path.dirname(CACHE_DB_PATH)
-if (!fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true })
+let db: SqlJsDatabase | null = null
+let initPromise: Promise<SqlJsDatabase> | null = null
+
+// Inicjalizacja bazy danych
+async function initDB(): Promise<SqlJsDatabase> {
+  if (db) return db
+  if (initPromise) return initPromise
+
+  initPromise = (async () => {
+    try {
+      // Ensure directory exists
+      await fs.mkdir(path.dirname(CACHE_DB_PATH), { recursive: true })
+      
+      // Załaduj SQL.js
+      const SQL = await initSqlJs({
+        locateFile: (file: string) => `https://sql.js.org/dist/${file}`
+      })
+      
+      let database: SqlJsDatabase
+      
+      try {
+        // Spróbuj wczytać istniejącą bazę
+        const data = await fs.readFile(CACHE_DB_PATH)
+        database = new SQL.Database(data)
+        console.log('✓ Loaded existing cache database')
+      } catch {
+        // Utwórz nową bazę
+        database = new SQL.Database()
+        console.log('✓ Created new cache database')
+        
+        // Utwórz tabele
+        database.run(`
+          CREATE TABLE translation_cache (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_text TEXT NOT NULL,
+            source_lang TEXT NOT NULL,
+            target_lang TEXT NOT NULL,
+            engine TEXT NOT NULL,
+            engine_config TEXT,
+            translated_text TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            hits INTEGER DEFAULT 1,
+            UNIQUE(source_text, source_lang, target_lang, engine, engine_config)
+          )
+        `)
+        
+        database.run(`
+          CREATE INDEX idx_cache_lookup ON translation_cache(source_text, source_lang, target_lang, engine);
+          CREATE INDEX idx_cache_created_at ON translation_cache(created_at);
+        `)
+        
+        // Zapisz bazę
+        const data = database.export()
+        await fs.writeFile(CACHE_DB_PATH, Buffer.from(data))
+      }
+      
+      db = database
+      return database
+    } catch (error) {
+      console.error('Error initializing cache database:', error)
+      throw error
+    }
+  })()
+
+  return initPromise
 }
 
-const db = new Database(CACHE_DB_PATH)
-
-// Initialize database
-db.exec(`
-  CREATE TABLE IF NOT EXISTS translation_cache (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    source_text TEXT NOT NULL,
-    source_lang TEXT NOT NULL,
-    target_lang TEXT NOT NULL,
-    engine TEXT NOT NULL,
-    engine_config TEXT,
-    translated_text TEXT NOT NULL,
-    created_at INTEGER NOT NULL,
-    hits INTEGER DEFAULT 1,
-    UNIQUE(source_text, source_lang, target_lang, engine, engine_config)
-  )
-`)
-
-db.exec(`
-  CREATE INDEX IF NOT EXISTS idx_cache_lookup ON translation_cache(source_text, source_lang, target_lang, engine);
-  CREATE INDEX IF NOT EXISTS idx_cache_created_at ON translation_cache(created_at);
-`)
+// Zapisz bazę do pliku
+async function saveDB() {
+  if (!db) return
+  try {
+    const data = db.export()
+    await fs.writeFile(CACHE_DB_PATH, Buffer.from(data))
+  } catch (error) {
+    console.error('Error saving cache database:', error)
+  }
+}
 
 export interface CacheEntry {
   id: number
@@ -45,34 +94,36 @@ export interface CacheEntry {
   hits: number
 }
 
-export function getCachedTranslation(
+export async function getCachedTranslation(
   sourceText: string,
   sourceLang: string,
   targetLang: string,
   engine: string,
   engineConfig: any = null
-): string | null {
+): Promise<string | null> {
   try {
+    const database = await initDB()
     const configStr = engineConfig ? JSON.stringify(engineConfig) : null
     
-    const stmt = db.prepare(`
+    const stmt = database.prepare(`
       SELECT translated_text, hits FROM translation_cache
       WHERE source_text = ? AND source_lang = ? AND target_lang = ? AND engine = ? 
         AND (engine_config IS ? OR engine_config = ?)
       LIMIT 1
     `)
     
-    const result = stmt.get(sourceText, sourceLang, targetLang, engine, configStr, configStr) as { translated_text: string, hits: number } | undefined
+    const result = stmt.getAsObject([sourceText, sourceLang, targetLang, engine, configStr, configStr])
     
-    if (result) {
+    if (result && result.translated_text) {
       // Update hit count
-      const updateStmt = db.prepare(`
+      const updateStmt = database.prepare(`
         UPDATE translation_cache SET hits = hits + 1
         WHERE source_text = ? AND source_lang = ? AND target_lang = ? AND engine = ?
       `)
-      updateStmt.run(sourceText, sourceLang, targetLang, engine)
+      updateStmt.run([sourceText, sourceLang, targetLang, engine])
       
-      return result.translated_text
+      await saveDB()
+      return result.translated_text as string
     }
     
     return null
@@ -82,32 +133,47 @@ export function getCachedTranslation(
   }
 }
 
-export function saveToCache(
+export async function saveToCache(
   sourceText: string,
   sourceLang: string,
   targetLang: string,
   engine: string,
   translatedText: string,
   engineConfig: any = null
-): boolean {
+): Promise<boolean> {
   try {
+    const database = await initDB()
     const configStr = engineConfig ? JSON.stringify(engineConfig) : null
     const now = Math.floor(Date.now() / 1000)
     
-    const stmt = db.prepare(`
-      INSERT OR REPLACE INTO translation_cache 
-      (source_text, source_lang, target_lang, engine, engine_config, translated_text, created_at, hits)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 
-        COALESCE((SELECT hits + 1 FROM translation_cache 
-                  WHERE source_text = ? AND source_lang = ? AND target_lang = ? AND engine = ?), 1)
-      )
+    // Sprawdź czy istnieje
+    const checkStmt = database.prepare(`
+      SELECT hits FROM translation_cache
+      WHERE source_text = ? AND source_lang = ? AND target_lang = ? AND engine = ? 
+        AND (engine_config IS ? OR engine_config = ?)
     `)
+    const existing = checkStmt.getAsObject([sourceText, sourceLang, targetLang, engine, configStr, configStr])
     
-    stmt.run(
-      sourceText, sourceLang, targetLang, engine, configStr, translatedText, now,
-      sourceText, sourceLang, targetLang, engine
-    )
+    if (existing && existing.hits) {
+      // Update existing
+      const updateStmt = database.prepare(`
+        UPDATE translation_cache 
+        SET translated_text = ?, hits = hits + 1, created_at = ?
+        WHERE source_text = ? AND source_lang = ? AND target_lang = ? AND engine = ? 
+          AND (engine_config IS ? OR engine_config = ?)
+      `)
+      updateStmt.run([translatedText, now, sourceText, sourceLang, targetLang, engine, configStr, configStr])
+    } else {
+      // Insert new
+      const insertStmt = database.prepare(`
+        INSERT INTO translation_cache 
+        (source_text, source_lang, target_lang, engine, engine_config, translated_text, created_at, hits)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+      `)
+      insertStmt.run([sourceText, sourceLang, targetLang, engine, configStr, translatedText, now])
+    }
     
+    await saveDB()
     return true
   } catch (error) {
     console.error('Error saving to cache:', error)
@@ -115,34 +181,40 @@ export function saveToCache(
   }
 }
 
-export function getCacheStats() {
+export async function getCacheStats() {
   try {
-    const totalStmt = db.prepare(`SELECT COUNT(*) as count FROM translation_cache`)
-    const total = totalStmt.get() as { count: number }
+    const database = await initDB()
     
-    const hitsStmt = db.prepare(`SELECT SUM(hits) as total_hits FROM translation_cache`)
-    const hits = hitsStmt.get() as { total_hits: number }
+    const totalStmt = database.prepare(`SELECT COUNT(*) as count FROM translation_cache`)
+    const totalResult = totalStmt.getAsObject([])
+    const total = totalResult?.count || 0
     
-    const sizeStmt = db.prepare(`SELECT SUM(LENGTH(source_text) + LENGTH(translated_text)) as total_size FROM translation_cache`)
-    const size = sizeStmt.get() as { total_size: number }
+    const hitsStmt = database.prepare(`SELECT SUM(hits) as total_hits FROM translation_cache`)
+    const hitsResult = hitsStmt.getAsObject([])
+    const totalHits = hitsResult?.total_hits || 0
     
-    const oldestStmt = db.prepare(`SELECT MIN(created_at) as oldest FROM translation_cache`)
-    const oldest = oldestStmt.get() as { oldest: number | null }
+    const sizeStmt = database.prepare(`SELECT SUM(LENGTH(source_text) + LENGTH(translated_text)) as total_size FROM translation_cache`)
+    const sizeResult = sizeStmt.getAsObject([])
+    const totalSize = sizeResult?.total_size || 0
     
-    const byEngineStmt = db.prepare(`
+    const oldestStmt = database.prepare(`SELECT MIN(created_at) as oldest FROM translation_cache`)
+    const oldestResult = oldestStmt.getAsObject([])
+    
+    const byEngineStmt = database.prepare(`
       SELECT engine, COUNT(*) as count, SUM(hits) as total_hits 
       FROM translation_cache 
       GROUP BY engine 
       ORDER BY count DESC
     `)
-    const byEngine = byEngineStmt.all()
+    const byEngineResults = byEngineStmt.getAsObject([])
+    const byEngine = Array.isArray(byEngineResults) ? byEngineResults : (byEngineResults ? [byEngineResults] : [])
     
     return {
-      total_entries: total.count,
-      total_hits: hits.total_hits || 0,
-      total_size_bytes: size.total_size || 0,
-      total_size_mb: ((size.total_size || 0) / (1024 * 1024)).toFixed(2),
-      oldest_entry: oldest.oldest ? new Date(oldest.oldest * 1000).toISOString() : null,
+      total_entries: total,
+      total_hits: totalHits,
+      total_size_bytes: totalSize,
+      total_size_mb: (totalSize / (1024 * 1024)).toFixed(2),
+      oldest_entry: oldestResult?.oldest ? new Date(oldestResult.oldest * 1000).toISOString() : null,
       by_engine: byEngine,
     }
   } catch (error) {
@@ -158,32 +230,40 @@ export function getCacheStats() {
   }
 }
 
-export function purgeOldCache(maxAgeDays: number = 30): number {
+export async function purgeOldCache(maxAgeDays: number = 30): Promise<number> {
   try {
+    const database = await initDB()
     const cutoff = Math.floor(Date.now() / 1000) - (maxAgeDays * 24 * 60 * 60)
     
-    const stmt = db.prepare(`DELETE FROM translation_cache WHERE created_at < ?`)
-    const result = stmt.run(cutoff)
+    const deleteStmt = database.prepare(`DELETE FROM translation_cache WHERE created_at < ?`)
+    deleteStmt.run([cutoff])
     
-    // Vacuum to reclaim space
-    db.exec('VACUUM')
+    await saveDB()
     
-    return result.changes
+    // Pobierz liczbę usuniętych
+    const changes = deleteStmt.getAsObject([])?.changes || 0
+    console.log(`✓ Purged ${changes} old cache entries`)
+    
+    return changes
   } catch (error) {
     console.error('Error purging cache:', error)
     return 0
   }
 }
 
-export function clearCache(): number {
+export async function clearCache(): Promise<number> {
   try {
-    const stmt = db.prepare(`DELETE FROM translation_cache`)
-    const result = stmt.run()
+    const database = await initDB()
     
-    // Vacuum to reclaim space
-    db.exec('VACUUM')
+    const deleteStmt = database.prepare(`DELETE FROM translation_cache`)
+    deleteStmt.run([])
     
-    return result.changes
+    await saveDB()
+    
+    const changes = deleteStmt.getAsObject([])?.changes || 0
+    console.log(`✓ Cleared ${changes} cache entries`)
+    
+    return changes
   } catch (error) {
     console.error('Error clearing cache:', error)
     return 0
