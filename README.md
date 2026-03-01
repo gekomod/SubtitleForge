@@ -136,21 +136,21 @@ Navigate to http://localhost:3000
 
 # Local Engines (No API Key Required)
 #######################################
-# Engine          | Description                      | Default URL
-# ----------------+----------------------------------+--------------------
-  LibreTranslate  | Open-source, self-hosted         | http://localhost:5010
-  Google GTX      | Free Google Translate API        | -
-  Ollama          | Local AI models (Llama, Mistral) | http://localhost:11434
-  DeepLX          | Free DeepL proxy                  | http://localhost:1188
+| Engine          | Description                      | Default URL
+| --------------- | -------------------------------- | ---------------------- |
+| LibreTranslate  | Open-source, self-hosted         | http://localhost:5010  |
+| Google GTX      | Free Google Translate API        | -                      |
+| Ollama          | Local AI models (Llama, Mistral) | http://localhost:11434 |
+| DeepLX          | Free DeepL proxy                  | http://localhost:1188 |
 
 # Cloud Engines (API Key Required)
-#######################################
-# Engine          | Description                      | API Key URL
-# ----------------+----------------------------------+--------------------------------------
-  DeepSeek        | Advanced AI models                | https://platform.deepseek.com
-  OpenRouter      | Access to Llama, GPT, Claude      | https://openrouter.ai/keys
-  Anthropic Claude| Claude AI models                   | https://console.anthropic.com
-  Azure Translator| Microsoft cloud                    | https://portal.azure.com
-  Google Cloud    | Google Cloud Translation           | https://console.cloud.google.com
-  DeepL Pro       | Premium translation                 | https://www.deepl.com/pro
-  Custom API      | Bring your own API                  | -
+
+| Engine          | Description                      | API Key URL
+| --------------- | -------------------------------- | ------------------------------------ |
+| DeepSeek        | Advanced AI models               | https://platform.deepseek.com        |
+| OpenRouter      | Access to Llama, GPT, Claude     | https://openrouter.ai/keys           |
+| Anthropic Claude| Claude AI models                 | https://console.anthropic.com        |
+| Azure Translator| Microsoft cloud                  | https://portal.azure.com             |
+| Google Cloud    | Google Cloud Translation         | https://console.cloud.google.com     |
+| DeepL Pro       | Premium translation              | https://www.deepl.com/pro            |
+| Custom API      | Bring your own API               | -                                    |
