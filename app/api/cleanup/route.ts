@@ -16,7 +16,10 @@ export async function POST(request: NextRequest) {
     const now = Date.now() / 1000
     let deletedTasks = 0
     
-    for (const [taskId, progress] of translationProgress.entries()) {
+    // Konwersja Map na tablicę wpisów przed iteracją
+    const entries = Array.from(translationProgress.entries())
+    
+    for (const [taskId, progress] of entries) {
       if (progress.created_at && (now - progress.created_at / 1000) > max_age) {
         translationProgress.delete(taskId)
         translationQueues.delete(taskId)
