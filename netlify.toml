@@ -1,0 +1,14 @@
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# Opcjonalnie: Jeśli używasz dużych modułów, które powodują, że funkcje są zbyt duże (>250MB),
+# możesz je wykluczyć. Odkomentuj i dostosuj w razie potrzeby.
+# [functions]
+#   included_files = [
+#     "!./node_modules/.bin/**/*",
+#     "!./node_modules/@next/**/*",
+#   ]
