@@ -1,14 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    serverActions: true,
-  },
-  api: {
-    bodyParser: {
-      sizeLimit: '100mb',
-    },
-    responseLimit: '100mb',
-  },
   images: {
     domains: ['localhost'],
   },
@@ -24,6 +15,10 @@ const nextConfig = {
       },
     ];
   },
+  // Maksymalny rozmiar body dla API routes - to jest domyślnie 4MB
+  // Jeśli potrzebujesz więcej, możesz skonfigurować to w samej route:
+  // export const maxDuration = 60; // dla funkcji serverless
+  // export const maxBodySize = '100mb'; // dla body parsera
 }
 
 module.exports = nextConfig

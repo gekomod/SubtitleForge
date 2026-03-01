@@ -4,6 +4,8 @@ import path from 'path'
 import { v4 as uuidv4 } from 'uuid'
 
 const UPLOAD_DIR = path.join(process.cwd(), 'uploads')
+export const maxDuration = 60; // czas wykonania w sekundach
+export const maxBodySize = '100mb'; // limit rozmiaru body
 
 // Ensure upload directory exists
 async function ensureDir() {
