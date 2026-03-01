@@ -4,6 +4,23 @@ import path from 'path'
 
 const CONFIG_FILE = path.join(process.cwd(), 'engine_configs.json')
 
+// Interfejs dla konfiguracji silnika
+interface EngineConfig {
+  enabled: boolean
+  name?: string
+  icon?: string
+  description?: string
+  server?: string
+  api_key?: string
+  model?: string
+  token?: string
+  auth_key?: string
+  type?: string
+  endpoint?: string
+  region?: string
+  popular?: boolean
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { engine: string } }
@@ -13,20 +30,28 @@ export async function POST(
   try {
     const { enabled } = await request.json()
     
-    // Wczytaj istniejące konfiguracje
-    let configs = {}
+    // Wczytaj istniejące konfiguracje z domyślnym typem
+    let configs: Record<string, EngineConfig> = {}
     try {
       const data = await fs.readFile(CONFIG_FILE, 'utf-8')
       configs = JSON.parse(data)
     } catch {
-      // Plik nie istnieje
+      // Plik nie istnieje - użyj pustego obiektu
+      configs = {}
     }
 
-    // Aktualizuj status enabled
-    if (configs[engine as keyof typeof configs]) {
-      configs[engine as keyof typeof configs] = {
-        ...configs[engine as keyof typeof configs],
+    // Jeśli silnik istnieje, zaktualizuj go
+    if (configs[engine]) {
+      configs[engine] = {
+        ...configs[engine],
         enabled
+      }
+    } else {
+      // Jeśli silnik nie istnieje, stwórz nowy wpis
+      configs[engine] = {
+        enabled,
+        name: engine,
+        description: `Custom ${engine} engine`
       }
     }
 
