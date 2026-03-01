@@ -81,7 +81,9 @@ const DEFAULT_CONFIGS = {
     enabled: false,
     popular: true
   }
-}
+} as const
+
+type EngineKey = keyof typeof DEFAULT_CONFIGS
 
 export default function TranslateTab() {
   const {
@@ -101,7 +103,7 @@ export default function TranslateTab() {
     reset: resetState,
   } = useTranslationStore()
 
-  const [selectedEngine, setSelectedEngine] = useState<string | null>(null)
+  const [selectedEngine, setSelectedEngine] = useState<EngineKey | null>(null)
   const [engines, setEngines] = useState<Record<string, any>>(DEFAULT_CONFIGS)
   const [isUploading, setIsUploading] = useState(false)
   const [fileInfo, setFileInfo] = useState<{
@@ -161,23 +163,25 @@ export default function TranslateTab() {
       // Wymuś ikony z DEFAULT_CONFIGS
       const fixedData = { ...data }
       Object.keys(fixedData).forEach(key => {
-        if (DEFAULT_CONFIGS[key]) {
-          fixedData[key].icon = DEFAULT_CONFIGS[key].icon
-          fixedData[key].iconColor = DEFAULT_CONFIGS[key].iconColor
-          fixedData[key].iconBg = DEFAULT_CONFIGS[key].iconBg
+        // Sprawdź czy klucz istnieje w DEFAULT_CONFIGS
+        if (key in DEFAULT_CONFIGS) {
+          const defaultKey = key as EngineKey
+          fixedData[key].icon = DEFAULT_CONFIGS[defaultKey].icon
+          fixedData[key].iconColor = DEFAULT_CONFIGS[defaultKey].iconColor
+          fixedData[key].iconBg = DEFAULT_CONFIGS[defaultKey].iconBg
         }
       })
       
       setEngines(fixedData)
       
       if (!selectedEngine && Object.keys(fixedData).length > 0) {
-        setSelectedEngine(Object.keys(fixedData)[0])
+        setSelectedEngine(Object.keys(fixedData)[0] as EngineKey)
       }
     } catch (error) {
       console.error('Failed to load configs:', error)
       setEngines(DEFAULT_CONFIGS)
       if (!selectedEngine && Object.keys(DEFAULT_CONFIGS).length > 0) {
-        setSelectedEngine(Object.keys(DEFAULT_CONFIGS)[0])
+        setSelectedEngine(Object.keys(DEFAULT_CONFIGS)[0] as EngineKey)
       }
     }
   }
@@ -211,9 +215,8 @@ export default function TranslateTab() {
 
         await loadPreview(data.file_id)
 
-        // Jeśli wykryto język, ustaw go jako źródłowy (nie "auto")
         if (data.detected_lang) {
-          setSourceLang(data.detected_lang) // ZMIANA: ustawiamy wykryty język, nie "auto"
+          setSourceLang(data.detected_lang)
         }
         
         if (data.library_hits?.length) {
@@ -534,51 +537,11 @@ export default function TranslateTab() {
     return formatTime(elapsedSeconds)
   }
 
-const calculateEstimatedTime = (blocks: number, engine: string | null): string => {
-  if (blocks === 0) return '~0s'
-  
-  // Rzeczywiste czasy dla różnych silników (w sekundach na blok)
-  // Na podstawie testów i średnich czasów odpowiedzi API
-  const engineSpeeds: Record<string, number> = {
-    libretranslate: 0.3,  // LibreTranslate lokalnie - szybki
-    googlegtx: 0.2,       // Google GTX - bardzo szybki
-    ollama: 0.8,          // Ollama lokalnie - zależy od modelu
-    deeplx: 0.25,         // DeepLX - szybki
-    deepseek: 0.6,        // DeepSeek API
-    openai: 0.7,          // OpenRouter - zależy od modelu
-    anthropic: 0.9,       // Claude - wolniejszy
-    azure: 0.4,           // Azure
-    google: 0.3,          // Google Cloud
-    deepl: 0.35,          // DeepL Pro
-    custom: 0.5,          // Custom - domyślnie
-  }
-
-  // Domyślna prędkość jeśli silnik nieznany
-  const speed = (engine && engineSpeeds[engine]) ? engineSpeeds[engine] : 0.5
-  
-  // Dodajemy czas inicjalizacji (pierwsze połączenie)
-  const initializationTime = 2 // sekundy
-  
-  // Oblicz całkowity czas
-  const totalSeconds = initializationTime + (blocks * speed)
-  
-  // Formatuj wynik
-  if (totalSeconds < 60) {
-    return `~${Math.round(totalSeconds)}s`
-  } else if (totalSeconds < 3600) {
-    const minutes = Math.floor(totalSeconds / 60)
-    const seconds = Math.round(totalSeconds % 60)
-    return `~${minutes}m ${seconds}s`
-  } else {
-    const hours = Math.floor(totalSeconds / 3600)
-    const minutes = Math.floor((totalSeconds % 3600) / 60)
-    return `~${hours}h ${minutes}m`
-  }
-}
-
   const estimatedChars = currentFileBlocks * 50
   const estimatedTime = currentFileBlocks * 0.5
-  const estimatedTimeString = calculateEstimatedTime(currentFileBlocks, selectedEngine)
+  const estimatedTimeString = estimatedTime < 60
+    ? `~${Math.round(estimatedTime)}s`
+    : `~${Math.floor(estimatedTime / 60)}m ${Math.round(estimatedTime % 60)}s`
 
   const livePreviewData = getLivePreviewData()
   const liveTranslatedData = Array(originalPreview.length).fill('')
@@ -590,7 +553,6 @@ const calculateEstimatedTime = (blocks: number, engine: string | null): string =
 
   return (
     <div className="bg-[#0e1016] border border-[rgba(255,255,255,0.07)] rounded-[28px] p-7">
-      {/* Progress */}
       {isTranslating && (
         <div className="mb-6">
           <ProgressBar
@@ -602,7 +564,6 @@ const calculateEstimatedTime = (blocks: number, engine: string | null): string =
         </div>
       )}
 
-      {/* Success */}
       {showSuccess && currentOutputFilename && (
         <div className="mb-6">
           <SuccessCard
@@ -614,22 +575,17 @@ const calculateEstimatedTime = (blocks: number, engine: string | null): string =
         </div>
       )}
 
-      {/* Error Alert */}
       <div className="err-alert hidden" id="errorAlert">
         <i className="bi bi-exclamation-triangle-fill"></i>
         <span></span>
       </div>
 
-      {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6">
-        {/* Left Column */}
         <div className="space-y-4">
           <FileUpload onUpload={handleUpload} isUploading={isUploading} />
 
-          {/* File Info Box - teraz z statystykami */}
           {fileInfo && (
             <div className="bg-[#13151f] border border-[rgba(255,255,255,0.07)] rounded-[20px] overflow-hidden">
-              {/* Górna część - informacje o pliku */}
               <div className="p-4 flex items-center justify-between gap-3 border-b border-[rgba(255,255,255,0.07)]">
                 <div className="flex items-center gap-3.5 min-w-0">
                   <div className="w-11 h-11 flex-shrink-0 bg-gradient-to-r from-[#7c5af0] to-[#9d7ef5] rounded-[14px] flex items-center justify-center text-white text-xl">
@@ -652,7 +608,6 @@ const calculateEstimatedTime = (blocks: number, engine: string | null): string =
                 )}
               </div>
               
-              {/* Dolna część - statystyki */}
               <div className="p-4 bg-[#0e1016]/50">
                 <StatsCards
                   blocks={currentFileBlocks}
@@ -666,7 +621,7 @@ const calculateEstimatedTime = (blocks: number, engine: string | null): string =
           <EngineSelector
             engines={engines}
             selectedEngine={selectedEngine}
-            onSelect={setSelectedEngine}
+            onSelect={(engine) => setSelectedEngine(engine as EngineKey)}
             onOpenConfig={handleOpenConfig}
           />
 
@@ -689,7 +644,6 @@ const calculateEstimatedTime = (blocks: number, engine: string | null): string =
           </button>
         </div>
 
-        {/* Right Column */}
         <div className="space-y-4">
           {showPreview && (
             <PreviewPanel
@@ -737,7 +691,6 @@ const calculateEstimatedTime = (blocks: number, engine: string | null): string =
         </div>
       </div>
 
-      {/* Modals */}
       <ConfigModal
         isOpen={configModal.isOpen}
         onClose={() => setConfigModal({ isOpen: false, engine: '', config: null })}
