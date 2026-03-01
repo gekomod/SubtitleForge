@@ -45,7 +45,10 @@ export function cleanupTasks(
   const now = Date.now() / 1000
   let deleted = 0
 
-  for (const [taskId, progress] of progressMap.entries()) {
+  // Konwertuj Map na tablicę przed iteracją
+  const entries = Array.from(progressMap.entries())
+  
+  for (const [taskId, progress] of entries) {
     if (progress.created_at && (now - progress.created_at / 1000) > maxAgeSeconds) {
       progressMap.delete(taskId)
       queueMap.delete(taskId)
