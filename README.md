@@ -134,7 +134,7 @@ Navigate to http://localhost:3000
 
 ## 🔌 Translation Engines
 
-# Local Engines (No API Key Required)
+### Local Engines (No API Key Required)
 
 | Engine          | Description                      | Default URL
 | --------------- | -------------------------------- | ---------------------- |
@@ -143,7 +143,7 @@ Navigate to http://localhost:3000
 | Ollama          | Local AI models (Llama, Mistral) | http://localhost:11434 |
 | DeepLX          | Free DeepL proxy                  | http://localhost:1188 |
 
-# Cloud Engines (API Key Required)
+### Cloud Engines (API Key Required)
 
 | Engine          | Description                      | API Key URL
 | --------------- | -------------------------------- | ------------------------------------ |
