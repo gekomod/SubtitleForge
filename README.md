@@ -85,7 +85,8 @@ yarn install
 pnpm install
 
 # 3. Set up environment variables
-cp .env.example .env.local```
+cp .env.example .env.local
+```
 
 ## Edit .env.local with your configuration:
 
@@ -111,10 +112,13 @@ TASK_TTL=7200
 LIBRETRANSLATE_SERVER=http://localhost:5010
 OLLAMA_SERVER=http://localhost:11434
 OLLAMA_MODEL=llama3.2:latest
-DEEPLX_SERVER=http://localhost:1188```
+DEEPLX_SERVER=http://localhost:1188
+```
 
 ## 4. Create required directories
+```bash
 mkdir -p uploads translated data
+```
 
 ## 5. Run the development server
 ```bash
@@ -122,7 +126,8 @@ npm run dev
 # or
 yarn dev
 # or
-pnpm dev```
+pnpm dev
+```
 
 ## 6. Open your browser
 Navigate to http://localhost:3000
