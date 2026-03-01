@@ -140,8 +140,11 @@ export async function saveToLibrary(
     const result = database.exec('SELECT last_insert_rowid() as id')
     const lastId = result[0]?.values[0][0]
     
-    console.log('✓ Saved to library:', { id: lastId, normTitle, engine, targetLang })
-    return lastId || null
+    // Konwersja na number
+    const numericId = lastId !== undefined ? Number(lastId) : null
+    
+    console.log('✓ Saved to library:', { id: numericId, normTitle, engine, targetLang })
+    return numericId
   } catch (error) {
     console.error('Error saving to library:', error)
     return null
@@ -163,16 +166,16 @@ export async function findExisting(filename: string, targetLang: string): Promis
     
     if (result && result.id) {
       return {
-        id: result.id,
-        uuid: result.uuid,
-        orig_filename: result.orig_filename,
-        norm_title: result.norm_title,
-        file_path: result.file_path,
-        engine: result.engine,
-        source_lang: result.source_lang,
-        target_lang: result.target_lang,
-        blocks: result.blocks,
-        created_at: result.created_at,
+        id: Number(result.id),
+        uuid: String(result.uuid || ''),
+        orig_filename: String(result.orig_filename || ''),
+        norm_title: String(result.norm_title || ''),
+        file_path: String(result.file_path || ''),
+        engine: String(result.engine || ''),
+        source_lang: String(result.source_lang || ''),
+        target_lang: String(result.target_lang || ''),
+        blocks: Number(result.blocks || 0),
+        created_at: Number(result.created_at || 0),
       }
     }
     return null
@@ -204,40 +207,38 @@ export async function searchLibrary(query: string, lang: string = '', limit: num
     const stmt = database.prepare(sql)
     const results = stmt.getAsObject(params)
     
-    // Konwersja na tablicę (sql.js zwraca obiekt dla pojedynczego wiersza)
+    // Konwersja na tablicę
     const entries: LibraryEntry[] = []
     
     if (Array.isArray(results)) {
-      // Jeśli results jest już tablicą
       results.forEach((row: any) => {
         if (row && row.id) {
           entries.push({
-            id: row.id,
-            uuid: row.uuid,
-            orig_filename: row.orig_filename,
-            norm_title: row.norm_title,
-            file_path: row.file_path,
-            engine: row.engine,
-            source_lang: row.source_lang,
-            target_lang: row.target_lang,
-            blocks: row.blocks,
-            created_at: row.created_at,
+            id: Number(row.id),
+            uuid: String(row.uuid || ''),
+            orig_filename: String(row.orig_filename || ''),
+            norm_title: String(row.norm_title || ''),
+            file_path: String(row.file_path || ''),
+            engine: String(row.engine || ''),
+            source_lang: String(row.source_lang || ''),
+            target_lang: String(row.target_lang || ''),
+            blocks: Number(row.blocks || 0),
+            created_at: Number(row.created_at || 0),
           })
         }
       })
     } else if (results && results.id) {
-      // Pojedynczy wynik
       entries.push({
-        id: results.id,
-        uuid: results.uuid,
-        orig_filename: results.orig_filename,
-        norm_title: results.norm_title,
-        file_path: results.file_path,
-        engine: results.engine,
-        source_lang: results.source_lang,
-        target_lang: results.target_lang,
-        blocks: results.blocks,
-        created_at: results.created_at,
+        id: Number(results.id),
+        uuid: String(results.uuid || ''),
+        orig_filename: String(results.orig_filename || ''),
+        norm_title: String(results.norm_title || ''),
+        file_path: String(results.file_path || ''),
+        engine: String(results.engine || ''),
+        source_lang: String(results.source_lang || ''),
+        target_lang: String(results.target_lang || ''),
+        blocks: Number(results.blocks || 0),
+        created_at: Number(results.created_at || 0),
       })
     }
     
@@ -264,31 +265,31 @@ export async function getRecent(limit: number = 20): Promise<LibraryEntry[]> {
       results.forEach((row: any) => {
         if (row && row.id) {
           entries.push({
-            id: row.id,
-            uuid: row.uuid,
-            orig_filename: row.orig_filename,
-            norm_title: row.norm_title,
-            file_path: row.file_path,
-            engine: row.engine,
-            source_lang: row.source_lang,
-            target_lang: row.target_lang,
-            blocks: row.blocks,
-            created_at: row.created_at,
+            id: Number(row.id),
+            uuid: String(row.uuid || ''),
+            orig_filename: String(row.orig_filename || ''),
+            norm_title: String(row.norm_title || ''),
+            file_path: String(row.file_path || ''),
+            engine: String(row.engine || ''),
+            source_lang: String(row.source_lang || ''),
+            target_lang: String(row.target_lang || ''),
+            blocks: Number(row.blocks || 0),
+            created_at: Number(row.created_at || 0),
           })
         }
       })
     } else if (results && results.id) {
       entries.push({
-        id: results.id,
-        uuid: results.uuid,
-        orig_filename: results.orig_filename,
-        norm_title: results.norm_title,
-        file_path: results.file_path,
-        engine: results.engine,
-        source_lang: results.source_lang,
-        target_lang: results.target_lang,
-        blocks: results.blocks,
-        created_at: results.created_at,
+        id: Number(results.id),
+        uuid: String(results.uuid || ''),
+        orig_filename: String(results.orig_filename || ''),
+        norm_title: String(results.norm_title || ''),
+        file_path: String(results.file_path || ''),
+        engine: String(results.engine || ''),
+        source_lang: String(results.source_lang || ''),
+        target_lang: String(results.target_lang || ''),
+        blocks: Number(results.blocks || 0),
+        created_at: Number(results.created_at || 0),
       })
     }
     
@@ -305,7 +306,7 @@ export async function getLibraryStats() {
     
     const totalStmt = database.prepare(`SELECT COUNT(*) as count FROM library`)
     const totalResult = totalStmt.getAsObject([])
-    const total = totalResult?.count || 0
+    const total = Number(totalResult?.count || 0)
     
     const langsStmt = database.prepare(`
       SELECT target_lang, COUNT(*) as count 
@@ -347,7 +348,7 @@ export async function deleteEntry(id: number): Promise<boolean> {
     
     if (entry && entry.file_path) {
       try {
-        await fs.unlink(entry.file_path)
+        await fs.unlink(String(entry.file_path))
         console.log('✓ Deleted file:', entry.file_path)
       } catch (err) {
         console.error('Error deleting file:', err)
@@ -377,16 +378,16 @@ export async function getEntryById(id: number): Promise<LibraryEntry | null> {
     
     if (result && result.id) {
       return {
-        id: result.id,
-        uuid: result.uuid,
-        orig_filename: result.orig_filename,
-        norm_title: result.norm_title,
-        file_path: result.file_path,
-        engine: result.engine,
-        source_lang: result.source_lang,
-        target_lang: result.target_lang,
-        blocks: result.blocks,
-        created_at: result.created_at,
+        id: Number(result.id),
+        uuid: String(result.uuid || ''),
+        orig_filename: String(result.orig_filename || ''),
+        norm_title: String(result.norm_title || ''),
+        file_path: String(result.file_path || ''),
+        engine: String(result.engine || ''),
+        source_lang: String(result.source_lang || ''),
+        target_lang: String(result.target_lang || ''),
+        blocks: Number(result.blocks || 0),
+        created_at: Number(result.created_at || 0),
       }
     }
     return null
@@ -411,7 +412,7 @@ export async function cleanupOldEntries(maxAgeDays: number = 30): Promise<number
     for (const entry of entriesToDelete) {
       if (entry && entry.file_path) {
         try {
-          await fs.unlink(entry.file_path)
+          await fs.unlink(String(entry.file_path))
         } catch (err) {
           console.error('Error deleting file:', err)
         }
@@ -425,7 +426,8 @@ export async function cleanupOldEntries(maxAgeDays: number = 30): Promise<number
     // Zapisz zmiany
     await saveDB()
     
-    const count = deleteStmt.getAsObject([])?.changes || 0
+    const result = deleteStmt.getAsObject([])
+    const count = Number(result?.changes || 0)
     console.log(`✓ Cleaned up ${count} old entries`)
     return count
   } catch (error) {
