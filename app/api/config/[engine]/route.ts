@@ -4,6 +4,25 @@ import path from 'path'
 
 const CONFIG_FILE = path.join(process.cwd(), 'engine_configs.json')
 
+// Interfejs dla konfiguracji silnika
+interface EngineConfig {
+  name?: string
+  icon?: string
+  iconColor?: string
+  iconBg?: string
+  description?: string
+  enabled?: boolean
+  server?: string
+  api_key?: string
+  model?: string
+  token?: string
+  auth_key?: string
+  type?: string
+  endpoint?: string
+  region?: string
+  popular?: boolean
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { engine: string } }
@@ -12,20 +31,26 @@ export async function POST(
   
   try {
     // Wczytaj istniejące konfiguracje
-    let configs = {}
+    let configs: Record<string, EngineConfig> = {}
     try {
       const data = await fs.readFile(CONFIG_FILE, 'utf-8')
       configs = JSON.parse(data)
     } catch {
-      // Plik nie istnieje
+      // Plik nie istnieje - użyj pustego obiektu
+      configs = {}
     }
 
-    // Aktualizuj konfigurację silnika
+    // Pobierz aktualizacje z body requestu
     const updates = await request.json()
+
+    // Przygotuj aktualną konfigurację dla silnika
+    const currentConfig = configs[engine] || {}
+
+    // Zaktualizuj konfigurację
     configs = {
       ...configs,
       [engine]: {
-        ...(configs[engine as keyof typeof configs] || {}),
+        ...currentConfig,
         ...updates
       }
     }
