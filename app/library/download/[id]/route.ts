@@ -5,7 +5,7 @@ import { getEntryById } from '@/lib/db/library'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const id = parseInt(params.id, 10)

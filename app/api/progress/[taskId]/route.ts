@@ -17,9 +17,9 @@ const translationQueues = global.translationQueues
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { taskId: string } }
+  { params }: { params: Promise<{ taskId: string }> }
 ) {
-  const { taskId } = params
+  const { taskId } = await params
 
   console.log('Progress request for task:', taskId)
   console.log('Task data:', translationProgress.get(taskId))
@@ -32,7 +32,6 @@ export async function GET(
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
       }
 
-      // Sprawdź czy zadanie istnieje
       if (!translationProgress.has(taskId)) {
         console.log('Task not found:', taskId)
         send({ error: 'Nie znaleziono zadania' })
@@ -40,7 +39,6 @@ export async function GET(
         return
       }
 
-      // Funkcja do wysyłania aktualnego stanu
       const sendCurrentState = () => {
         const progress = translationProgress.get(taskId)
         if (progress) {
@@ -53,20 +51,16 @@ export async function GET(
         }
       }
 
-      // Wyślij początkowy stan
       sendCurrentState()
 
-      // Poll for updates
       const interval = setInterval(() => {
         const progress = translationProgress.get(taskId)
         const queue = translationQueues.get(taskId) || []
         
-        // Wyślij wszystkie oczekujące wiadomości
         while (queue.length > 0) {
           const data = queue.shift()
           send(data)
           
-          // Jeśli to ostatnia wiadomość, zamknij połączenie
           if (data.completed || data.error) {
             clearInterval(interval)
             controller.close()
@@ -74,7 +68,6 @@ export async function GET(
           }
         }
         
-        // Wyślij aktualny stan
         if (progress) {
           send({
             progress: progress.progress || 0,
@@ -85,7 +78,6 @@ export async function GET(
         }
       }, 500)
 
-      // Cleanup on close
       request.signal.addEventListener('abort', () => {
         clearInterval(interval)
         controller.close()

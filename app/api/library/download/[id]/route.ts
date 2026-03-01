@@ -1,33 +1,32 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs/promises'
 import path from 'path'
 import { getEntryById } from '@/lib/db/library'
 
 export async function GET(
-  request: Request,
-  { params }: { params: { id: string } }
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const id = parseInt(params.id, 10)
-  
-  if (isNaN(id)) {
-    return new NextResponse('Invalid ID', { status: 400 })
-  }
-
   try {
-    const entry = await getEntryById(id)
+    const { id } = await params
+    const numericId = parseInt(id, 10)
+    
+    if (isNaN(numericId)) {
+      return new NextResponse('Invalid ID', { status: 400 })
+    }
+
+    const entry = await getEntryById(numericId)
     
     if (!entry || !entry.file_path) {
       return new NextResponse('Entry not found', { status: 404 })
     }
 
-    // Check if file exists
     try {
       await fs.access(entry.file_path)
     } catch {
       return new NextResponse('File not found', { status: 404 })
     }
 
-    // Read file
     const fileBuffer = await fs.readFile(entry.file_path)
     const fileName = path.basename(entry.file_path)
 
@@ -35,6 +34,7 @@ export async function GET(
       headers: {
         'Content-Disposition': `attachment; filename="${fileName}"`,
         'Content-Type': 'application/octet-stream',
+        'Content-Length': fileBuffer.length.toString(),
       },
     })
   } catch (error) {

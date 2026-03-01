@@ -4,7 +4,6 @@ import path from 'path'
 
 const CONFIG_FILE = path.join(process.cwd(), 'engine_configs.json')
 
-// Interfejs dla konfiguracji silnika
 interface EngineConfig {
   name?: string
   icon?: string
@@ -31,7 +30,6 @@ export async function POST(
     const { engine } = await params
     const updates = await request.json()
 
-    // Wczytaj istniejące konfiguracje
     let configs: Record<string, EngineConfig> = {}
     try {
       const data = await fs.readFile(CONFIG_FILE, 'utf-8')
@@ -40,10 +38,8 @@ export async function POST(
       configs = {}
     }
 
-    // Przygotuj aktualną konfigurację dla silnika
     const currentConfig = configs[engine] || {}
 
-    // Zaktualizuj konfigurację
     configs = {
       ...configs,
       [engine]: {
@@ -52,7 +48,6 @@ export async function POST(
       }
     }
 
-    // Zapisz
     await fs.writeFile(CONFIG_FILE, JSON.stringify(configs, null, 2))
     
     return NextResponse.json({ success: true })

@@ -1,18 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs/promises'
 import path from 'path'
-import { getFileInfo } from '@/lib/services/fileService'
 import { countBlocks } from '@/lib/utils/subtitleParser'
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads')
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { fileId: string } }
+  { params }: { params: Promise<{ fileId: string }> }
 ) {
-  const { fileId } = params
-
   try {
+    const { fileId } = await params
+
     const files = await fs.readdir(UPLOAD_DIR)
     const filename = files.find(f => f.startsWith(fileId))
     

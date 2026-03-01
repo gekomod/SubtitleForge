@@ -8,12 +8,11 @@ const TRANSLATED_DIR = process.env.TRANSLATED_DIR || path.join(process.cwd(), 't
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { fileId: string } }
+  { params }: { params: Promise<{ fileId: string }> }
 ) {
-  const { fileId } = params
-
   try {
-    // Search for file in uploads and translated folders
+    const { fileId } = await params
+
     let filepath: string | null = null
     
     const dirs = [UPLOAD_DIR, TRANSLATED_DIR]
@@ -45,7 +44,6 @@ export async function GET(
       blocks = parseSRT(content)
     }
 
-    // Get first 10 lines for preview
     const preview = blocks.slice(0, 10).map(b => b.text)
 
     return NextResponse.json({
