@@ -8,26 +8,26 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const id = parseInt(params.id, 10)
+    // Najpierw await na params
+    const { id } = await params
+    const numericId = parseInt(id, 10)
     
-    if (isNaN(id)) {
+    if (isNaN(numericId)) {
       return new NextResponse('Invalid ID', { status: 400 })
     }
 
-    const entry = await getEntryById(id)
+    const entry = await getEntryById(numericId)
     
     if (!entry || !entry.file_path) {
       return new NextResponse('Entry not found', { status: 404 })
     }
 
-    // Sprawdź czy plik istnieje
     try {
       await fs.access(entry.file_path)
     } catch {
       return new NextResponse('File not found', { status: 404 })
     }
 
-    // Odczytaj plik
     const fileBuffer = await fs.readFile(entry.file_path)
     const fileName = path.basename(entry.file_path)
 
