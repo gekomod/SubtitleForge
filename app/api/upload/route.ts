@@ -4,8 +4,10 @@ import path from 'path'
 import { v4 as uuidv4 } from 'uuid'
 
 const UPLOAD_DIR = path.join(process.cwd(), 'uploads')
-export const maxDuration = 60; // czas wykonania w sekundach
-export const maxBodySize = '100mb'; // limit rozmiaru body
+
+// Usuń lub zakomentuj te linie - nie są potrzebne w Next.js 15
+// export const maxDuration = 60;
+// export const maxBodySize = '100mb';
 
 // Ensure upload directory exists
 async function ensureDir() {
@@ -16,13 +18,12 @@ async function ensureDir() {
   }
 }
 
-// Funkcja do wykrywania języka - bardziej agresywna
+// Funkcja do wykrywania języka
 function detectLanguage(text: string): string {
   if (!text || text.length < 10) return 'en'
   
   const samples = text.toLowerCase()
   
-  // System punktowy dla każdego języka
   const scores: Record<string, number> = {
     pl: 0,
     en: 0,
@@ -32,11 +33,9 @@ function detectLanguage(text: string): string {
     it: 0,
   }
   
-  // Polskie znaki diakrytyczne - duża waga
   const plChars = (samples.match(/[ąćęłńóśźż]/g) || []).length
   scores.pl += plChars * 3
   
-  // Polskie common words - bardzo specyficzne
   const plWords = ['się', 'jest', 'nie', 'tak', 'ale', 'co', 'to', 'na', 'z', 'do', 'jak', 'dla', 'przez', 'pod', 'nad', 'bez', 'oraz', 'tym', 'tego', 'może', 'bardzo', 'wszystko']
   plWords.forEach(word => {
     const regex = new RegExp(`\\b${word}\\b`, 'g')
@@ -44,7 +43,6 @@ function detectLanguage(text: string): string {
     scores.pl += count * 2
   })
   
-  // Angielskie common words
   const enWords = ['the', 'and', 'you', 'that', 'was', 'for', 'are', 'with', 'his', 'they', 'have', 'this', 'from', 'not', 'but', 'what', 'all', 'were', 'when', 'your', 'can', 'said', 'there']
   enWords.forEach(word => {
     const regex = new RegExp(`\\b${word}\\b`, 'g')
@@ -52,25 +50,18 @@ function detectLanguage(text: string): string {
     scores.en += count
   })
   
-  // Niemieckie znaki
   const deChars = (samples.match(/[äöüß]/g) || []).length
   scores.de += deChars * 3
   
-  // Francuskie znaki
   const frChars = (samples.match(/[éèêëàâîïôûùçœæ]/g) || []).length
   scores.fr += frChars * 3
   
-  // Hiszpańskie znaki
   const esChars = (samples.match(/[ñáéíóúü¿¡]/g) || []).length
   scores.es += esChars * 3
   
-  // Włoskie znaki
   const itChars = (samples.match(/[àèéìíîòóùú]/g) || []).length
   scores.it += itChars * 3
   
-  console.log('Language detection scores:', scores)
-  
-  // Znajdź język z najwyższym wynikiem
   let maxLang = 'en'
   let maxScore = 0
   
@@ -81,7 +72,6 @@ function detectLanguage(text: string): string {
     }
   }
   
-  // Jeśli wynik jest bardzo niski, zwróć angielski
   if (maxScore < 2) return 'en'
   
   return maxLang
@@ -112,7 +102,6 @@ function extractTextForDetection(content: string, filename: string): string {
   let text = ''
   
   if (ext === '.ass' || ext === '.ssa') {
-    // ASS/SSA - wyciągnij tekst z linii Dialogue:
     const lines = content.split('\n')
     for (const line of lines) {
       if (line.startsWith('Dialogue:')) {
@@ -126,7 +115,6 @@ function extractTextForDetection(content: string, filename: string): string {
       }
     }
   } else if (ext === '.vtt') {
-    // VTT - weź linie po znacznikach czasu
     const lines = content.split('\n')
     let collectText = false
     for (const line of lines) {
@@ -138,21 +126,17 @@ function extractTextForDetection(content: string, filename: string): string {
       }
     }
   } else {
-    // SRT - bardziej zaawansowane parsowanie
     const lines = content.split('\n')
     let i = 0
     
     while (i < lines.length) {
       const line = lines[i].trim()
       
-      // Szukamy timestampu
       if (line.includes('-->')) {
-        i++ // przejdź do następnej linii (pierwsza linia tekstu)
+        i++
         
-        // Zbieraj wszystkie linie tekstu aż do pustej linii
         while (i < lines.length && lines[i].trim() !== '') {
           const textLine = lines[i].trim()
-          // Ignoruj numery (jeśli pojawią się w środku)
           if (!/^\d+$/.test(textLine)) {
             text += ' ' + textLine
           }
@@ -163,9 +147,7 @@ function extractTextForDetection(content: string, filename: string): string {
     }
   }
   
-  const result = text.trim()
-  console.log('Extracted text for detection:', result.substring(0, 200) + '...')
-  return result
+  return text.trim()
 }
 
 export async function POST(request: NextRequest) {
@@ -194,23 +176,18 @@ export async function POST(request: NextRequest) {
     }
 
     const fileId = uuidv4()
-    // Zapisz plik z pełną nazwą: UUID_originalna_nazwa
     const savedFilename = `${fileId}_${file.name}`
     const filepath = path.join(UPLOAD_DIR, savedFilename)
 
-    // Odczytaj zawartość pliku
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
     await writeFile(filepath, buffer)
 
-    // Odczytaj zawartość jako tekst
     const content = buffer.toString('utf-8')
     
-    // Wyciągnij tekst do wykrywania języka
     const textForDetection = extractTextForDetection(content, file.name)
     const detectedLang = textForDetection ? detectLanguage(textForDetection) : 'en'
     
-    // Policz bloki w zależności od formatu
     let blocksCount = 0
     if (ext === '.ass' || ext === '.ssa') {
       blocksCount = countASSBlocks(content)
@@ -234,7 +211,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       file_id: fileId,
-      saved_filename: savedFilename, // Dodajemy pełną nazwę pliku
+      saved_filename: savedFilename,
       filename: file.name,
       file_type: fileType,
       size: buffer.length,
