@@ -135,7 +135,7 @@ Navigate to http://localhost:3000
 ## 🔌 Translation Engines
 
 # Local Engines (No API Key Required)
-#######################################
+
 | Engine          | Description                      | Default URL
 | --------------- | -------------------------------- | ---------------------- |
 | LibreTranslate  | Open-source, self-hosted         | http://localhost:5010  |
