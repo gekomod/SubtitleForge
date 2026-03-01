@@ -25,23 +25,20 @@ interface EngineConfig {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { engine: string } }
+  { params }: { params: Promise<{ engine: string }> }
 ) {
-  const { engine } = params
-  
   try {
+    const { engine } = await params
+    const updates = await request.json()
+
     // Wczytaj istniejące konfiguracje
     let configs: Record<string, EngineConfig> = {}
     try {
       const data = await fs.readFile(CONFIG_FILE, 'utf-8')
       configs = JSON.parse(data)
     } catch {
-      // Plik nie istnieje - użyj pustego obiektu
       configs = {}
     }
-
-    // Pobierz aktualizacje z body requestu
-    const updates = await request.json()
 
     // Przygotuj aktualną konfigurację dla silnika
     const currentConfig = configs[engine] || {}

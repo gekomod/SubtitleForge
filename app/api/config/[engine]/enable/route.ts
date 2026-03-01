@@ -21,16 +21,17 @@ interface EngineConfig {
   popular?: boolean
 }
 
+// W Next.js 15 params musi być Promise lub nieużywany
 export async function POST(
   request: NextRequest,
-  { params }: { params: { engine: string } }
+  { params }: { params: Promise<{ engine: string }> }
 ) {
-  const { engine } = params
-  
   try {
+    // W Next.js 15 params jest Promise, więc trzeba await
+    const { engine } = await params
     const { enabled } = await request.json()
     
-    // Wczytaj istniejące konfiguracje z domyślnym typem
+    // Wczytaj istniejące konfiguracje
     let configs: Record<string, EngineConfig> = {}
     try {
       const data = await fs.readFile(CONFIG_FILE, 'utf-8')
