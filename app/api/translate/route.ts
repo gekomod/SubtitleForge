@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { v4 as uuidv4 } from 'uuid'
 import path from 'path'
 import { translateFile } from '@/lib/translators/worker'
+import fs from 'fs/promises'
+import { countBlocks } from '@/lib/utils/subtitleParser'
+
+const UPLOAD_DIR = path.join(process.cwd(), 'uploads')
 
 // Globalne store
 declare global {
@@ -19,6 +23,26 @@ if (!global.translationQueues) {
 const translationProgress = global.translationProgress
 const translationQueues = global.translationQueues
 
+// Funkcja do liczenia bloków z pliku
+async function getTotalBlocks(filepath: string, filename: string): Promise<number> {
+  try {
+    const content = await fs.readFile(filepath, 'utf-8')
+    const ext = path.extname(filename).toLowerCase()
+    
+    if (ext === '.ass' || ext === '.ssa') {
+      return (content.match(/^Dialogue:/gm) || []).length
+    } else if (ext === '.vtt') {
+      return (content.match(/-->/g) || []).length
+    } else {
+      const timestampPattern = /\d{2}:\d{2}:\d{2}[,.]\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}[,.]\d{3}/g
+      return (content.match(timestampPattern) || []).length
+    }
+  } catch (error) {
+    console.error('Error counting blocks:', error)
+    return 0
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -31,6 +55,22 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Znajdź plik i policz bloki
+    const files = await fs.readdir(UPLOAD_DIR)
+    const filename = files.find(f => f.startsWith(file_id))
+    
+    if (!filename) {
+      return NextResponse.json(
+        { success: false, error: 'Plik nie istnieje' },
+        { status: 404 }
+      )
+    }
+
+    const filepath = path.join(UPLOAD_DIR, filename)
+    const totalBlocks = await getTotalBlocks(filepath, filename)
+    
+    console.log(`Total blocks for file ${filename}: ${totalBlocks}`)
+
     const taskId = uuidv4()
     const timestamp = Date.now()
     const originalExt = path.extname(saved_filename)
@@ -42,11 +82,11 @@ export async function POST(request: NextRequest) {
     // Inicjalizuj queue dla tego zadania
     translationQueues.set(taskId, [])
     
-    // Inicjalizuj progress
+    // Inicjalizuj progress z prawidłowym total
     translationProgress.set(taskId, {
       progress: 0,
       current: 0,
-      total: 0,
+      total: totalBlocks, // Ustawiamy prawidłową liczbę bloków
       status: 'pending',
       file_type: path.extname(saved_filename).substring(1),
       created_at: Date.now(),
@@ -59,21 +99,32 @@ export async function POST(request: NextRequest) {
       source_lang, 
       target_lang,
       saved_filename,
-      outputFilename
+      outputFilename,
+      totalBlocks
     })
+
+    // Wyślij początkowy stan do queue
+    const queue = translationQueues.get(taskId) || []
+    queue.push({ 
+      progress: 0, 
+      current: 0, 
+      total: totalBlocks,
+      status: 'pending'
+    })
+    translationQueues.set(taskId, queue)
 
     // Uruchom tłumaczenie w tle
     translateFile(
       saved_filename,
       outputFilename,
-      { engine, source_lang, target_lang, ...config },
+      { engine, source_lang, target_lang, totalBlocks, ...config }, // Przekaż totalBlocks do workera
       (progress, current, total, liveData) => {
         // Aktualizuj progress w store
         translationProgress.set(taskId, {
           ...translationProgress.get(taskId),
           progress,
           current,
-          total,
+          total: total || totalBlocks, // Użyj przekazanego total lub zachowaj oryginalne
           status: progress < 100 ? 'translating' : 'completed'
         })
         
@@ -82,11 +133,10 @@ export async function POST(request: NextRequest) {
         const message: any = { 
           progress, 
           current, 
-          total,
+          total: total || totalBlocks,
           status: progress < 100 ? 'translating' : 'completed'
         }
         
-        // Jeśli mamy dane live (przetłumaczony blok), dodaj je do wiadomości
         if (liveData) {
           message.block_id = liveData.block_id
           message.translated_text = liveData.translated_text
@@ -97,7 +147,6 @@ export async function POST(request: NextRequest) {
         queue.push(message)
         translationQueues.set(taskId, queue)
         
-        // Jeśli to ostatni blok, dodaj informację o zakończeniu
         if (progress >= 100) {
           console.log(`Translation completed for task: ${taskId}, file: ${outputFilename}`)
           
@@ -106,7 +155,7 @@ export async function POST(request: NextRequest) {
             completed: true, 
             progress: 100,
             current,
-            total,
+            total: total || totalBlocks,
             output_file: outputFilename
           })
           translationQueues.set(taskId, finalQueue)
@@ -115,7 +164,6 @@ export async function POST(request: NextRequest) {
     ).catch(error => {
       console.error('Translation error:', error)
       
-      // Aktualizuj progress z błędem
       translationProgress.set(taskId, {
         ...translationProgress.get(taskId),
         status: 'error',
@@ -133,7 +181,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       task_id: taskId,
-      output_filename: outputFilename
+      output_filename: outputFilename,
+      total_blocks: totalBlocks // Zwróć totalBlocks do klienta
     })
   } catch (error) {
     console.error('Translation error:', error)

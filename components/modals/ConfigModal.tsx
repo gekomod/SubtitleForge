@@ -80,6 +80,9 @@ export default function ConfigModal({
                 onChange={(e) => setLocalConfig({ ...localConfig, server: e.target.value })}
                 placeholder="http://localhost:5010"
               />
+              <p className="text-[10px] text-[#666980] mt-1">
+                Adres serwera LibreTranslate
+              </p>
             </div>
           </>
         )
@@ -90,28 +93,57 @@ export default function ConfigModal({
             <div className="mb-4">
               <label className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#666980] mb-1.5">
                 <i className="bi bi-server text-purple-400 text-xs"></i>
-                API URL
+                Server URL
               </label>
               <input
                 type="text"
                 className="w-full p-3 border border-[rgba(255,255,255,0.07)] rounded-[14px] bg-[#0e1016] text-[#dde0ed] text-sm focus:border-[#7c5af0] focus:outline-none"
-                value={localConfig.server || ''}
+                value={localConfig.server || 'http://192.168.1.35:11434'}
                 onChange={(e) => setLocalConfig({ ...localConfig, server: e.target.value })}
-                placeholder="http://localhost:11434"
+                placeholder="http://192.168.1.35:11434"
               />
+              <p className="text-[10px] text-[#666980] mt-1">
+                Adres serwera Ollama (np. http://192.168.1.35:11434)
+              </p>
             </div>
             <div className="mb-4">
               <label className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#666980] mb-1.5">
                 <i className="bi bi-cpu text-purple-400 text-xs"></i>
                 Model
               </label>
-              <input
-                type="text"
+              <select
                 className="w-full p-3 border border-[rgba(255,255,255,0.07)] rounded-[14px] bg-[#0e1016] text-[#dde0ed] text-sm focus:border-[#7c5af0] focus:outline-none"
-                value={localConfig.model || ''}
+                value={localConfig.model || 'llama3.2:1b'}
                 onChange={(e) => setLocalConfig({ ...localConfig, model: e.target.value })}
-                placeholder="llama3.2:latest"
+              >
+                <option value="llama3.2:1b">Llama 3.2 1B (szybki, mały)</option>
+                <option value="llama3.2:3b">Llama 3.2 3B (zbalansowany)</option>
+                <option value="gemma3:4b">Gemma 3 4B (dokładniejszy)</option>
+                <option value="translator-pl-en:latest">Translator PL-EN (specjalizowany)</option>
+                <option value="jnowakk11/translate-polish:latest">Translate Polish (specjalizowany)</option>
+              </select>
+              <p className="text-[10px] text-[#666980] mt-1">
+                Wybierz model do tłumaczenia. Sprawdź dostępne: curl {localConfig.server || 'http://192.168.1.35:11434'}/api/tags
+              </p>
+            </div>
+            <div className="mb-4">
+              <label className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#666980] mb-1.5">
+                <i className="bi bi-thermometer-half text-purple-400 text-xs"></i>
+                Temperatura
+              </label>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.1"
+                className="w-full"
+                value={localConfig.temperature || 0.1}
+                onChange={(e) => setLocalConfig({ ...localConfig, temperature: parseFloat(e.target.value) })}
               />
+              <div className="flex justify-between text-[10px] text-[#666980]">
+                <span>Dosłowne (0.1)</span>
+                <span>Kreatywne (1.0)</span>
+              </div>
             </div>
           </>
         )
@@ -181,7 +213,7 @@ export default function ConfigModal({
               <i className={`bi ${engineStyle.icon}`}></i>
             </div>
             <h5 className="text-base font-semibold">
-              {config?.name || 'Engine'} Configuration
+              {config?.name || engine} Configuration
             </h5>
           </div>
           <button onClick={onClose} className="text-[#666980] hover:text-[#dde0ed] transition-colors">
@@ -189,7 +221,7 @@ export default function ConfigModal({
           </button>
         </div>
         
-        <div className="p-6">
+        <div className="p-6 max-h-[70vh] overflow-y-auto">
           <div className="mb-4">
             <div className="flex items-center justify-between">
               <label className="text-[10px] font-semibold uppercase tracking-wider text-[#666980]">

@@ -9,5 +9,17 @@
     "api_key": "",
     "enabled": true,
     "popular": true
+  },
+  "ollama": {
+    "name": "Ollama",
+    "icon": "bi-robot",
+    "iconColor": "text-purple-400",
+    "iconBg": "bg-purple-500/20",
+    "description": "Lokalne modele AI",
+    "server": "http://192.168.1.35:11434",
+    "model": "jnowakk11/translate-polish:latest",
+    "api_key": "",
+    "enabled": true,
+    "popular": true
   }
 }

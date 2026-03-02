@@ -296,65 +296,72 @@ export default function TranslateTab() {
   }
 
   const startTranslation = async () => {
-    if (!currentFileId) {
-      toast.error('Najpierw wgraj plik')
-      return
-    }
-    if (!selectedEngine) {
-      toast.error('Wybierz silnik AI')
-      return
-    }
-    const config = engines[selectedEngine]
-    if (!config.enabled) {
-      toast.error('Wybrany silnik jest wyłączony')
-      return
-    }
+  if (!currentFileId) {
+    toast.error('Najpierw wgraj plik')
+    return
+  }
+  if (!selectedEngine) {
+    toast.error('Wybierz silnik AI')
+    return
+  }
+  const config = engines[selectedEngine]
+  if (!config.enabled) {
+    toast.error('Wybrany silnik jest wyłączony')
+    return
+  }
 
-    if (!fileInfo || !fileInfo.saved_filename) {
-      toast.error('Brak informacji o pliku - wgraj plik ponownie')
-      return
-    }
+  if (!fileInfo || !fileInfo.saved_filename) {
+    toast.error('Brak informacji o pliku - wgraj plik ponownie')
+    return
+  }
 
-    const payload = {
-      source_lang: sourceLang,
-      target_lang: targetLang,
-      engine: selectedEngine,
-      file_id: currentFileId,
-      saved_filename: fileInfo.saved_filename,
-      ...config,
-    }
+  const payload = {
+    source_lang: sourceLang,
+    target_lang: targetLang,
+    engine: selectedEngine,
+    file_id: currentFileId,
+    saved_filename: fileInfo.saved_filename,
+    ...config,
+  }
 
-    setIsTranslating(true)
-    setShowSuccess(false)
-    setProgress(0)
-    setCurrentBlock(0)
-    setLiveTranslatedBlocks(new Map())
-    startTimer()
+  setIsTranslating(true)
+  setShowSuccess(false)
+  setProgress(0)
+  setCurrentBlock(0)
+  setLiveTranslatedBlocks(new Map())
+  startTimer()
 
-    try {
-      const response = await fetch('/api/translate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
+  try {
+    const response = await fetch('/api/translate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    
+    const data = await response.json()
+
+    if (data.success) {
+      console.log('Translation started:', data)
+      setCurrentTaskId(data.task_id)
+      setCurrentOutputFilename(data.output_filename)
       
-      const data = await response.json()
-
-      if (data.success) {
-        setCurrentTaskId(data.task_id)
-        setCurrentOutputFilename(data.output_filename)
-        startProgress(data.task_id)
-        toast.success('Tłumaczenie rozpoczęte')
-      } else {
-        toast.error(data.error || 'Nie udało się rozpocząć tłumaczenia')
-        resetTranslation()
+      // Ustaw prawidłową liczbę bloków z odpowiedzi API
+      if (data.total_blocks) {
+        setCurrentFileBlocks(data.total_blocks)
       }
-    } catch (error) {
-      console.error('Translation error:', error)
-      toast.error('Błąd połączenia z serwerem')
+      
+      startProgress(data.task_id)
+      toast.success('Tłumaczenie rozpoczęte')
+    } else {
+      toast.error(data.error || 'Nie udało się rozpocząć tłumaczenia')
       resetTranslation()
     }
+  } catch (error) {
+    console.error('Translation error:', error)
+    toast.error('Błąd połączenia z serwerem')
+    resetTranslation()
   }
+}
 
   const startProgress = (taskId: string) => {
     if (eventSourceRef.current) {

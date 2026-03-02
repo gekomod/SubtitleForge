@@ -86,28 +86,88 @@ export class DeepLXEngine implements TranslationEngine {
   }
 }
 
-// Ollama
+// Ollama - POPRAWIONA WERSJA
 export class OllamaEngine implements TranslationEngine {
   async translate(text: string, sourceLang: string, targetLang: string, config: any): Promise<string> {
     try {
-      const server = config.server || 'http://localhost:11434'
-      const model = config.model || 'llama3.2:latest'
+      const server = config.server || 'http://192.168.1.35:11434'
+      const baseUrl = server.replace(/\/$/, '')
       
-      const prompt = `Translate the following text from ${sourceLang === 'auto' ? 'the detected language' : sourceLang} to ${targetLang}. Return only the translation, no explanations:\n\n${text}`
+      // Wybierz najlepszy model do tłumaczeń
+      const model = config.model || 'gemma3:4b' // Zmiana domyślnego modelu na gemma3:4b
+      
+      console.log('Translating with Ollama:', { baseUrl, model, textLength: text.length })
+      
+      // Określ języki dla promptu
+      const sourceLangName = sourceLang === 'auto' ? 'the original' : 
+                            (sourceLang === 'pl' ? 'Polish' : 
+                             sourceLang === 'en' ? 'English' : sourceLang)
+      const targetLangName = targetLang === 'pl' ? 'Polish' : 
+                            (targetLang === 'en' ? 'English' : targetLang)
+      
+      // Lepszy prompt dla tłumaczeń
+      const prompt = `You are a professional translator. Translate the following text from ${sourceLangName} to ${targetLangName}. Return ONLY the translation, no explanations, no additional text, no quotes.
+
+Original text: ${text}
+
+Translation:`
+      
+      console.log('Prompt:', prompt.substring(0, 100) + '...')
       
       const response = await axios.post(
-        `${server}/api/generate`,
+        `${baseUrl}/api/generate`,
         {
           model,
           prompt,
           stream: false,
+          options: {
+            temperature: 0.1,
+            num_predict: 500,
+            top_k: 20,
+            top_p: 0.9,
+            repeat_penalty: 1.1
+          }
         },
-        { timeout: 30000 }
+        { 
+          timeout: 60000,
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        }
       )
       
-      return response.data.response.trim()
-    } catch (error) {
-      console.error('Ollama error:', error)
+      if (!response.data || !response.data.response) {
+        throw new Error('No response from Ollama')
+      }
+      
+      // Wyczyść odpowiedź
+      let translated = response.data.response.trim()
+      
+      // Usuń "Translation:" jeśli model zwrócił
+      translated = translated.replace(/^Translation:\s*/i, '')
+      // Usuń cudzysłowy
+      translated = translated.replace(/^["']|["']$/g, '')
+      // Usuń "Odpowiedź:" itp
+      translated = translated.replace(/^(Answer:|Response:|Odpowiedź:)\s*/i, '')
+      
+      console.log('Translated:', translated.substring(0, 100))
+      
+      return translated
+    } catch (error: any) {
+      console.error('Ollama error details:', {
+        message: error.message,
+        code: error.code,
+        status: error.response?.status,
+        data: error.response?.data,
+        config: error.config?.url
+      })
+      
+      if (error.code === 'ECONNREFUSED') {
+        throw new Error(`Cannot connect to Ollama at ${config.server}. Make sure Ollama is running (ollama serve)`)
+      }
+      if (error.response?.status === 404) {
+        throw new Error(`Model '${config.model}' not found. Available models: llama3.2:1b, gemma3:4b, translator-pl-en:latest`)
+      }
       throw error
     }
   }

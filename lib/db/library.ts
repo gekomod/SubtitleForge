@@ -1,86 +1,49 @@
-import initSqlJs, { Database as SqlJsDatabase } from 'sql.js'
+import Database from 'better-sqlite3'
 import path from 'path'
-import fs from 'fs/promises'
+import fs from 'fs'
 import { v4 as uuidv4 } from 'uuid'
 
 const DB_PATH = path.join(process.cwd(), 'data', 'library.db')
 
-let db: SqlJsDatabase | null = null
-let initPromise: Promise<SqlJsDatabase> | null = null
-
 // Inicjalizacja bazy danych
-async function initDB(): Promise<SqlJsDatabase> {
+let db: Database.Database | null = null
+
+function initDB(): Database.Database {
   if (db) return db
-  if (initPromise) return initPromise
-
-  initPromise = (async () => {
-    try {
-      // Załaduj SQL.js
-      const SQL = await initSqlJs({
-        locateFile: (file: string) => `https://sql.js.org/dist/${file}`
-      })
-      
-      let database: SqlJsDatabase
-      
-      try {
-        // Spróbuj wczytać istniejącą bazę
-        const data = await fs.readFile(DB_PATH)
-        database = new SQL.Database(data)
-        console.log('✓ Loaded existing database from:', DB_PATH)
-      } catch {
-        // Utwórz nową bazę
-        database = new SQL.Database()
-        console.log('✓ Created new database at:', DB_PATH)
-        
-        // Utwórz tabele
-        database.run(`
-          CREATE TABLE library (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            uuid TEXT NOT NULL UNIQUE,
-            orig_filename TEXT NOT NULL,
-            norm_title TEXT NOT NULL,
-            file_path TEXT NOT NULL,
-            engine TEXT NOT NULL,
-            source_lang TEXT NOT NULL,
-            target_lang TEXT NOT NULL,
-            blocks INTEGER DEFAULT 0,
-            created_at INTEGER NOT NULL
-          )
-        `)
-        
-        database.run(`
-          CREATE INDEX idx_library_norm_title ON library(norm_title);
-          CREATE INDEX idx_library_target_lang ON library(target_lang);
-          CREATE INDEX idx_library_created_at ON library(created_at);
-        `)
-        
-        // Zapisz bazę
-        const data = database.export()
-        await fs.mkdir(path.dirname(DB_PATH), { recursive: true })
-        await fs.writeFile(DB_PATH, Buffer.from(data))
-      }
-      
-      db = database
-      return database
-    } catch (error) {
-      console.error('Error initializing database:', error)
-      throw error
-    }
-  })()
-
-  return initPromise
-}
-
-// Zapisz bazę do pliku
-async function saveDB() {
-  if (!db) return
-  try {
-    const data = db.export()
-    await fs.writeFile(DB_PATH, Buffer.from(data))
-    console.log('✓ Database saved to:', DB_PATH)
-  } catch (error) {
-    console.error('Error saving database:', error)
+  
+  // Ensure directory exists
+  const dbDir = path.dirname(DB_PATH)
+  if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true })
   }
+  
+  // Otwórz połączenie z bazą
+  db = new Database(DB_PATH)
+  
+  // Utwórz tabele jeśli nie istnieją
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS library (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      uuid TEXT NOT NULL UNIQUE,
+      orig_filename TEXT NOT NULL,
+      norm_title TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      engine TEXT NOT NULL,
+      source_lang TEXT NOT NULL,
+      target_lang TEXT NOT NULL,
+      blocks INTEGER DEFAULT 0,
+      created_at INTEGER NOT NULL
+    )
+  `)
+  
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_library_norm_title ON library(norm_title);
+    CREATE INDEX IF NOT EXISTS idx_library_target_lang ON library(target_lang);
+    CREATE INDEX IF NOT EXISTS idx_library_created_at ON library(created_at);
+  `)
+  
+  console.log('✓ Database initialized at:', DB_PATH)
+  return db
 }
 
 export interface LibraryEntry {
@@ -106,22 +69,21 @@ export function normalizeTitle(filename: string): string {
     .trim()
     .toLowerCase()
   
-  // Usuń kody językowe (np. .pl., .en.)
   title = title.replace(/\.(pl|en|de|fr|es|it|ru|uk|cs|sk)\b/g, '')
   
   return title
 }
 
-export async function saveToLibrary(
+export function saveToLibrary(
   origFilename: string,
   filePath: string,
   engine: string,
   sourceLang: string,
   targetLang: string,
   blocks: number = 0
-): Promise<number | null> {
+): number | null {
   try {
-    const database = await initDB()
+    const database = initDB()
     const normTitle = normalizeTitle(origFilename)
     const id = uuidv4()
     const now = Math.floor(Date.now() / 1000)
@@ -131,29 +93,19 @@ export async function saveToLibrary(
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
     
-    stmt.run([id, origFilename, normTitle, filePath, engine, sourceLang, targetLang, blocks, now])
+    const info = stmt.run(id, origFilename, normTitle, filePath, engine, sourceLang, targetLang, blocks, now)
     
-    // Zapisz zmiany
-    await saveDB()
-    
-    // Pobierz ostatnie ID
-    const result = database.exec('SELECT last_insert_rowid() as id')
-    const lastId = result[0]?.values[0][0]
-    
-    // Konwersja na number
-    const numericId = lastId !== undefined ? Number(lastId) : null
-    
-    console.log('✓ Saved to library:', { id: numericId, normTitle, engine, targetLang })
-    return numericId
+    console.log('✓ Saved to library:', { id: info.lastInsertRowid, normTitle, engine, targetLang })
+    return Number(info.lastInsertRowid)
   } catch (error) {
     console.error('Error saving to library:', error)
     return null
   }
 }
 
-export async function findExisting(filename: string, targetLang: string): Promise<LibraryEntry | null> {
+export function findExisting(filename: string, targetLang: string): LibraryEntry | null {
   try {
-    const database = await initDB()
+    const database = initDB()
     const normTitle = normalizeTitle(filename)
     
     const stmt = database.prepare(`
@@ -162,20 +114,20 @@ export async function findExisting(filename: string, targetLang: string): Promis
       ORDER BY created_at DESC LIMIT 1
     `)
     
-    const result = stmt.getAsObject([normTitle, targetLang])
+    const row = stmt.get(normTitle, targetLang) as any
     
-    if (result && result.id) {
+    if (row) {
       return {
-        id: Number(result.id),
-        uuid: String(result.uuid || ''),
-        orig_filename: String(result.orig_filename || ''),
-        norm_title: String(result.norm_title || ''),
-        file_path: String(result.file_path || ''),
-        engine: String(result.engine || ''),
-        source_lang: String(result.source_lang || ''),
-        target_lang: String(result.target_lang || ''),
-        blocks: Number(result.blocks || 0),
-        created_at: Number(result.created_at || 0),
+        id: row.id,
+        uuid: row.uuid,
+        orig_filename: row.orig_filename,
+        norm_title: row.norm_title,
+        file_path: row.file_path,
+        engine: row.engine,
+        source_lang: row.source_lang,
+        target_lang: row.target_lang,
+        blocks: row.blocks,
+        created_at: row.created_at,
       }
     }
     return null
@@ -185,9 +137,9 @@ export async function findExisting(filename: string, targetLang: string): Promis
   }
 }
 
-export async function searchLibrary(query: string, lang: string = '', limit: number = 50): Promise<LibraryEntry[]> {
+export function searchLibrary(query: string, lang: string = '', limit: number = 50): LibraryEntry[] {
   try {
-    const database = await initDB()
+    const database = initDB()
     const searchTerm = `%${query.toLowerCase()}%`
     
     let sql = `
@@ -205,130 +157,77 @@ export async function searchLibrary(query: string, lang: string = '', limit: num
     params.push(limit)
     
     const stmt = database.prepare(sql)
-    const results = stmt.getAsObject(params)
+    const rows = stmt.all(...params) as any[]
     
-    // Konwersja na tablicę
-    const entries: LibraryEntry[] = []
-    
-    if (Array.isArray(results)) {
-      results.forEach((row: any) => {
-        if (row && row.id) {
-          entries.push({
-            id: Number(row.id),
-            uuid: String(row.uuid || ''),
-            orig_filename: String(row.orig_filename || ''),
-            norm_title: String(row.norm_title || ''),
-            file_path: String(row.file_path || ''),
-            engine: String(row.engine || ''),
-            source_lang: String(row.source_lang || ''),
-            target_lang: String(row.target_lang || ''),
-            blocks: Number(row.blocks || 0),
-            created_at: Number(row.created_at || 0),
-          })
-        }
-      })
-    } else if (results && results.id) {
-      entries.push({
-        id: Number(results.id),
-        uuid: String(results.uuid || ''),
-        orig_filename: String(results.orig_filename || ''),
-        norm_title: String(results.norm_title || ''),
-        file_path: String(results.file_path || ''),
-        engine: String(results.engine || ''),
-        source_lang: String(results.source_lang || ''),
-        target_lang: String(results.target_lang || ''),
-        blocks: Number(results.blocks || 0),
-        created_at: Number(results.created_at || 0),
-      })
-    }
-    
-    return entries
+    return rows.map(row => ({
+      id: row.id,
+      uuid: row.uuid,
+      orig_filename: row.orig_filename,
+      norm_title: row.norm_title,
+      file_path: row.file_path,
+      engine: row.engine,
+      source_lang: row.source_lang,
+      target_lang: row.target_lang,
+      blocks: row.blocks,
+      created_at: row.created_at,
+    }))
   } catch (error) {
     console.error('Error searching library:', error)
     return []
   }
 }
 
-export async function getRecent(limit: number = 20): Promise<LibraryEntry[]> {
+export function getRecent(limit: number = 20): LibraryEntry[] {
   try {
-    const database = await initDB()
+    const database = initDB()
     
     const stmt = database.prepare(`
       SELECT * FROM library 
       ORDER BY created_at DESC LIMIT ?
     `)
     
-    const results = stmt.getAsObject([limit])
-    const entries: LibraryEntry[] = []
+    const rows = stmt.all(limit) as any[]
     
-    if (Array.isArray(results)) {
-      results.forEach((row: any) => {
-        if (row && row.id) {
-          entries.push({
-            id: Number(row.id),
-            uuid: String(row.uuid || ''),
-            orig_filename: String(row.orig_filename || ''),
-            norm_title: String(row.norm_title || ''),
-            file_path: String(row.file_path || ''),
-            engine: String(row.engine || ''),
-            source_lang: String(row.source_lang || ''),
-            target_lang: String(row.target_lang || ''),
-            blocks: Number(row.blocks || 0),
-            created_at: Number(row.created_at || 0),
-          })
-        }
-      })
-    } else if (results && results.id) {
-      entries.push({
-        id: Number(results.id),
-        uuid: String(results.uuid || ''),
-        orig_filename: String(results.orig_filename || ''),
-        norm_title: String(results.norm_title || ''),
-        file_path: String(results.file_path || ''),
-        engine: String(results.engine || ''),
-        source_lang: String(results.source_lang || ''),
-        target_lang: String(results.target_lang || ''),
-        blocks: Number(results.blocks || 0),
-        created_at: Number(results.created_at || 0),
-      })
-    }
-    
-    return entries
+    return rows.map(row => ({
+      id: row.id,
+      uuid: row.uuid,
+      orig_filename: row.orig_filename,
+      norm_title: row.norm_title,
+      file_path: row.file_path,
+      engine: row.engine,
+      source_lang: row.source_lang,
+      target_lang: row.target_lang,
+      blocks: row.blocks,
+      created_at: row.created_at,
+    }))
   } catch (error) {
     console.error('Error getting recent:', error)
     return []
   }
 }
 
-export async function getLibraryStats() {
+export function getLibraryStats() {
   try {
-    const database = await initDB()
+    const database = initDB()
     
-    const totalStmt = database.prepare(`SELECT COUNT(*) as count FROM library`)
-    const totalResult = totalStmt.getAsObject([])
-    const total = Number(totalResult?.count || 0)
+    const total = database.prepare('SELECT COUNT(*) as count FROM library').get() as { count: number }
     
-    const langsStmt = database.prepare(`
+    const byLang = database.prepare(`
       SELECT target_lang, COUNT(*) as count 
       FROM library 
       GROUP BY target_lang 
       ORDER BY count DESC
-    `)
-    const langsResults = langsStmt.getAsObject([])
+    `).all()
     
-    const byLang = Array.isArray(langsResults) ? langsResults : (langsResults ? [langsResults] : [])
-    
-    const enginesStmt = database.prepare(`
+    const byEngine = database.prepare(`
       SELECT engine, COUNT(*) as count 
       FROM library 
       GROUP BY engine 
       ORDER BY count DESC
-    `)
-    const enginesResults = enginesStmt.getAsObject([])
-    const byEngine = Array.isArray(enginesResults) ? enginesResults : (enginesResults ? [enginesResults] : [])
+    `).all()
     
     return {
-      total,
+      total: total.count,
       byLang,
       byEngine,
     }
@@ -338,56 +237,40 @@ export async function getLibraryStats() {
   }
 }
 
-export async function deleteEntry(id: number): Promise<boolean> {
+export function deleteEntry(id: number): boolean {
   try {
-    const database = await initDB()
+    const database = initDB()
     
-    // Najpierw pobierz ścieżkę pliku
-    const getStmt = database.prepare(`SELECT file_path FROM library WHERE id = ?`)
-    const entry = getStmt.getAsObject([id])
-    
-    if (entry && entry.file_path) {
-      try {
-        await fs.unlink(String(entry.file_path))
-        console.log('✓ Deleted file:', entry.file_path)
-      } catch (err) {
-        console.error('Error deleting file:', err)
-      }
-    }
-    
-    // Usuń z bazy
-    const deleteStmt = database.prepare(`DELETE FROM library WHERE id = ?`)
-    deleteStmt.run([id])
-    
-    // Zapisz zmiany
-    await saveDB()
+    const stmt = database.prepare('DELETE FROM library WHERE id = ?')
+    const info = stmt.run(id)
     
     console.log('✓ Deleted entry:', id)
-    return true
+    return info.changes > 0
   } catch (error) {
     console.error('Error deleting entry:', error)
     return false
   }
 }
 
-export async function getEntryById(id: number): Promise<LibraryEntry | null> {
+export function getEntryById(id: number): LibraryEntry | null {
   try {
-    const database = await initDB()
-    const stmt = database.prepare(`SELECT * FROM library WHERE id = ?`)
-    const result = stmt.getAsObject([id])
+    const database = initDB()
     
-    if (result && result.id) {
+    const stmt = database.prepare('SELECT * FROM library WHERE id = ?')
+    const row = stmt.get(id) as any
+    
+    if (row) {
       return {
-        id: Number(result.id),
-        uuid: String(result.uuid || ''),
-        orig_filename: String(result.orig_filename || ''),
-        norm_title: String(result.norm_title || ''),
-        file_path: String(result.file_path || ''),
-        engine: String(result.engine || ''),
-        source_lang: String(result.source_lang || ''),
-        target_lang: String(result.target_lang || ''),
-        blocks: Number(result.blocks || 0),
-        created_at: Number(result.created_at || 0),
+        id: row.id,
+        uuid: row.uuid,
+        orig_filename: row.orig_filename,
+        norm_title: row.norm_title,
+        file_path: row.file_path,
+        engine: row.engine,
+        source_lang: row.source_lang,
+        target_lang: row.target_lang,
+        blocks: row.blocks,
+        created_at: row.created_at,
       }
     }
     return null
@@ -397,39 +280,16 @@ export async function getEntryById(id: number): Promise<LibraryEntry | null> {
   }
 }
 
-export async function cleanupOldEntries(maxAgeDays: number = 30): Promise<number> {
+export function cleanupOldEntries(maxAgeDays: number = 30): number {
   try {
-    const database = await initDB()
+    const database = initDB()
     const cutoff = Math.floor(Date.now() / 1000) - (maxAgeDays * 24 * 60 * 60)
     
-    // Pobierz wpisy do usunięcia
-    const selectStmt = database.prepare(`SELECT file_path FROM library WHERE created_at < ?`)
-    const toDelete = selectStmt.getAsObject([cutoff])
+    const stmt = database.prepare('DELETE FROM library WHERE created_at < ?')
+    const info = stmt.run(cutoff)
     
-    const entriesToDelete = Array.isArray(toDelete) ? toDelete : (toDelete ? [toDelete] : [])
-    
-    // Usuń pliki
-    for (const entry of entriesToDelete) {
-      if (entry && entry.file_path) {
-        try {
-          await fs.unlink(String(entry.file_path))
-        } catch (err) {
-          console.error('Error deleting file:', err)
-        }
-      }
-    }
-    
-    // Usuń z bazy
-    const deleteStmt = database.prepare(`DELETE FROM library WHERE created_at < ?`)
-    deleteStmt.run([cutoff])
-    
-    // Zapisz zmiany
-    await saveDB()
-    
-    const result = deleteStmt.getAsObject([])
-    const count = Number(result?.changes || 0)
-    console.log(`✓ Cleaned up ${count} old entries`)
-    return count
+    console.log(`✓ Cleaned up ${info.changes} old entries`)
+    return info.changes
   } catch (error) {
     console.error('Error cleaning up library:', error)
     return 0

@@ -17,24 +17,22 @@ async function ensureDir() {
 
 // Funkcje do parsowania różnych formatów
 function parseSRT(content: string): Array<{ id: number; text: string }> {
+  if (!content) return []
+  
   const blocks: Array<{ id: number; text: string }> = []
   const lines = content.split('\n')
   let i = 0
 
   while (i < lines.length) {
-    const line = lines[i].trim()
+    const line = lines[i]?.trim() || ''
     
-    // Szukamy numeru bloku
-    if (/^\d+$/.test(line) && i + 1 < lines.length && lines[i + 1].includes('-->')) {
+    if (/^\d+$/.test(line) && i + 1 < lines.length && lines[i + 1]?.includes('-->')) {
       const id = parseInt(line, 10)
       i++ // przejdź do timestamp
-      
-      // Timestamp
       i++ // pomiń timestamp
       
-      // Zbierz tekst bloku (może być wiele linii)
       const textLines: string[] = []
-      while (i < lines.length && lines[i].trim() !== '') {
+      while (i < lines.length && lines[i]?.trim() !== '') {
         textLines.push(lines[i])
         i++
       }
@@ -52,12 +50,14 @@ function parseSRT(content: string): Array<{ id: number; text: string }> {
 }
 
 function parseASS(content: string): Array<{ id: number; text: string }> {
+  if (!content) return []
+  
   const blocks: Array<{ id: number; text: string }> = []
   const lines = content.split('\n')
   let id = 1
 
   for (const line of lines) {
-    if (line.startsWith('Dialogue:')) {
+    if (line?.startsWith('Dialogue:')) {
       const parts = line.split(',', 10)
       if (parts.length >= 10) {
         const text = parts.slice(9).join(',').trim()
@@ -74,19 +74,21 @@ function parseASS(content: string): Array<{ id: number; text: string }> {
 }
 
 function parseVTT(content: string): Array<{ id: number; text: string }> {
+  if (!content) return []
+  
   const blocks: Array<{ id: number; text: string }> = []
   const lines = content.split('\n')
   let id = 1
   let i = 0
 
   while (i < lines.length) {
-    const line = lines[i].trim()
+    const line = lines[i]?.trim() || ''
     
     if (line.includes('-->')) {
       i++ // przejdź do tekstu
       
       const textLines: string[] = []
-      while (i < lines.length && lines[i].trim() !== '' && !lines[i].includes('-->')) {
+      while (i < lines.length && lines[i]?.trim() !== '' && !lines[i]?.includes('-->')) {
         textLines.push(lines[i])
         i++
       }
@@ -107,10 +109,12 @@ function parseVTT(content: string): Array<{ id: number; text: string }> {
 
 // Funkcje do generowania plików wyjściowych
 function generateSRT(originalBlocks: Array<{ id: number; text: string }>, translatedBlocks: Array<{ id: number; text: string }>, originalContent: string): string {
+  if (!originalContent) return ''
+  
   const lines = originalContent.split('\n')
   const output: string[] = []
   
-  // Stwórz mapę przetłumaczonych bloków dla szybkiego dostępu
+  // Stwórz mapę przetłumaczonych bloków
   const translatedMap = new Map<number, string>()
   translatedBlocks.forEach(block => {
     translatedMap.set(block.id, block.text)
@@ -119,10 +123,10 @@ function generateSRT(originalBlocks: Array<{ id: number; text: string }>, transl
   
   let i = 0
   while (i < lines.length) {
-    const line = lines[i]
+    const line = lines[i] || ''
     
     // Szukamy bloku
-    if (/^\d+$/.test(line.trim()) && i + 1 < lines.length && lines[i + 1].includes('-->')) {
+    if (/^\d+$/.test(line.trim()) && i + 1 < lines.length && lines[i + 1]?.includes('-->')) {
       const id = parseInt(line.trim(), 10)
       
       // Zachowaj numer
@@ -130,7 +134,7 @@ function generateSRT(originalBlocks: Array<{ id: number; text: string }>, transl
       i++
       
       // Zachowaj timestamp
-      output.push(lines[i])
+      output.push(lines[i] || '')
       i++
       
       // Sprawdź czy mamy tłumaczenie dla tego bloku
@@ -142,15 +146,15 @@ function generateSRT(originalBlocks: Array<{ id: number; text: string }>, transl
         console.log(`⚠ Block ${id}: No translation found, using original`)
         // Jeśli nie ma tłumaczenia, użyj oryginalnego tekstu
         const originalTextLines: string[] = []
-        while (i < lines.length && lines[i].trim() !== '') {
-          originalTextLines.push(lines[i])
+        while (i < lines.length && lines[i]?.trim() !== '') {
+          originalTextLines.push(lines[i] || '')
           i++
         }
         output.push(...originalTextLines)
       }
       
-      // Pomiń resztę oryginalnego tekstu (jeśli nie został użyty)
-      while (i < lines.length && lines[i].trim() !== '') {
+      // Pomiń resztę oryginalnego tekstu
+      while (i < lines.length && lines[i]?.trim() !== '') {
         i++
       }
       
@@ -168,9 +172,10 @@ function generateSRT(originalBlocks: Array<{ id: number; text: string }>, transl
 }
 
 function generateASS(originalBlocks: Array<{ id: number; text: string }>, translatedBlocks: Array<{ id: number; text: string }>, originalContent: string): string {
+  if (!originalContent) return ''
+  
   const lines = originalContent.split('\n')
   
-  // Stwórz mapę przetłumaczonych bloków
   const translatedMap = new Map<number, string>()
   translatedBlocks.forEach(block => {
     translatedMap.set(block.id, block.text)
@@ -180,7 +185,7 @@ function generateASS(originalBlocks: Array<{ id: number; text: string }>, transl
   let currentId = 1
 
   for (const line of lines) {
-    if (line.startsWith('Dialogue:')) {
+    if (line?.startsWith('Dialogue:')) {
       const parts = line.split(',', 10)
       if (parts.length >= 10) {
         const translatedText = translatedMap.get(currentId)
@@ -206,9 +211,10 @@ function generateASS(originalBlocks: Array<{ id: number; text: string }>, transl
 }
 
 function generateVTT(originalBlocks: Array<{ id: number; text: string }>, translatedBlocks: Array<{ id: number; text: string }>, originalContent: string): string {
+  if (!originalContent) return ''
+  
   const lines = originalContent.split('\n')
   
-  // Stwórz mapę przetłumaczonych bloków
   const translatedMap = new Map<number, string>()
   translatedBlocks.forEach(block => {
     translatedMap.set(block.id, block.text)
@@ -219,7 +225,7 @@ function generateVTT(originalBlocks: Array<{ id: number; text: string }>, transl
   let i = 0
 
   while (i < lines.length) {
-    const line = lines[i]
+    const line = lines[i] || ''
     
     if (line.includes('-->')) {
       output.push(line)
@@ -233,7 +239,7 @@ function generateVTT(originalBlocks: Array<{ id: number; text: string }>, transl
       }
       
       // Pomiń oryginalny tekst
-      while (i < lines.length && lines[i].trim() !== '') {
+      while (i < lines.length && lines[i]?.trim() !== '') {
         i++
       }
       
@@ -258,7 +264,6 @@ export async function translateFile(
 ): Promise<string> {
   await ensureDir()
   
-  // Pełna ścieżka do pliku wejściowego
   const inputPath = path.join(UPLOAD_DIR, inputFilename)
   const outputPath = path.join(TRANSLATED_DIR, outputFilename)
   
@@ -280,6 +285,9 @@ export async function translateFile(
   // Wczytaj plik
   console.log('Reading input file...')
   const content = await fs.readFile(inputPath, 'utf-8')
+  if (!content) {
+    throw new Error('File is empty')
+  }
   console.log(`✓ File read: ${content.length} bytes`)
   
   const ext = path.extname(inputFilename).toLowerCase()
@@ -296,7 +304,8 @@ export async function translateFile(
     originalBlocks = parseSRT(content)
   }
   
-  console.log(`✓ Found ${originalBlocks.length} blocks to translate`)
+  const totalBlocks = config.totalBlocks || originalBlocks.length
+  console.log(`✓ Found ${originalBlocks.length} blocks to translate (total: ${totalBlocks})`)
   
   // Tłumacz bloki
   const translatedBlocks: Array<{ id: number; text: string }> = []
@@ -305,10 +314,9 @@ export async function translateFile(
     const block = originalBlocks[i]
     
     try {
-      console.log(`\n[${i + 1}/${originalBlocks.length}] Translating block ${block.id}:`)
+      console.log(`\n[${i + 1}/${totalBlocks}] Translating block ${block.id}:`)
       console.log('  Original:', JSON.stringify(block.text.substring(0, 50)) + (block.text.length > 50 ? '...' : ''))
       
-      // Tłumacz
       const translated = await translate(
         block.text,
         config.engine,
@@ -324,22 +332,18 @@ export async function translateFile(
         text: translated
       })
       
-      // Oblicz progress
-      const progress = Math.round(((i + 1) / originalBlocks.length) * 100)
+      const progress = Math.round(((i + 1) / totalBlocks) * 100)
       
-      // Wyślij progress z danymi na żywo
-      onProgress(progress, i + 1, originalBlocks.length, {
+      onProgress(progress, i + 1, totalBlocks, {
         block_id: block.id,
         translated_text: translated,
         original_text_preview: block.text.substring(0, 50)
       })
       
-      // Małe opóźnienie
       await new Promise(resolve => setTimeout(resolve, 50))
       
     } catch (error) {
       console.error(`✗ Error translating block ${i + 1}:`, error)
-      // W przypadku błędu, użyj oryginalnego tekstu
       translatedBlocks.push({
         id: block.id,
         text: block.text
@@ -350,16 +354,8 @@ export async function translateFile(
   console.log('\n' + '='.repeat(60))
   console.log(`✓ Translated ${translatedBlocks.length} blocks`)
   
-  // Sprawdź czy wszystkie bloki mają tłumaczenia
-  const missingTranslations = originalBlocks.filter(
-    orig => !translatedBlocks.some(trans => trans.id === orig.id)
-  )
-  if (missingTranslations.length > 0) {
-    console.log(`⚠ Missing translations for blocks:`, missingTranslations.map(b => b.id))
-  }
-  
   // Generuj plik wyjściowy
-  console.log('\nGenerating output file...')
+  console.log('Generating output file...')
   let output = ''
   if (ext === '.ass' || ext === '.ssa') {
     output = generateASS(originalBlocks, translatedBlocks, content)
@@ -367,6 +363,10 @@ export async function translateFile(
     output = generateVTT(originalBlocks, translatedBlocks, content)
   } else {
     output = generateSRT(originalBlocks, translatedBlocks, content)
+  }
+  
+  if (!output) {
+    throw new Error('Failed to generate output file')
   }
   
   console.log(`✓ Output generated: ${output.length} bytes`)
@@ -381,34 +381,6 @@ export async function translateFile(
     await fs.access(outputPath)
     const stats = await fs.stat(outputPath)
     console.log(`✓ File verified: ${outputPath} (${stats.size} bytes)`)
-    
-    // Wyświetl pierwsze kilka linii dla weryfikacji
-    const savedContent = await fs.readFile(outputPath, 'utf-8')
-    const previewLines = savedContent.split('\n').slice(0, 30)
-    
-    console.log('\n' + '='.repeat(60))
-    console.log('SAVED FILE PREVIEW (first 30 lines):')
-    console.log('='.repeat(60))
-    previewLines.forEach((line, idx) => {
-      console.log(`${idx + 1}: ${line}`)
-    })
-    console.log('='.repeat(60))
-    
-    // Sprawdź czy są jakieś tłumaczenia
-    let translationFound = false
-    for (let i = 900; i <= 914; i++) {
-      const translated = translatedBlocks.find(b => b.id === i)
-      if (translated && savedContent.includes(translated.text.substring(0, 30))) {
-        console.log(`✓ Found translation for block ${i} in saved file`)
-        translationFound = true
-      }
-    }
-    
-    if (!translationFound) {
-      console.log('⚠ WARNING: No translations found in saved file!')
-      console.log('Translated blocks sample:', translatedBlocks.slice(0, 5).map(b => ({ id: b.id, text: b.text.substring(0, 30) })))
-    }
-    
   } catch (error) {
     console.error('✗ Error verifying file save:', error)
     throw new Error('Failed to save translated file')
