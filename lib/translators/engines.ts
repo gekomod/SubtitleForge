@@ -86,93 +86,92 @@ export class DeepLXEngine implements TranslationEngine {
   }
 }
 
-// Ollama - POPRAWIONA WERSJA
+// Ollama
 export class OllamaEngine implements TranslationEngine {
   async translate(text: string, sourceLang: string, targetLang: string, config: any): Promise<string> {
     try {
-      const server = config.server || 'http://192.168.1.35:11434'
-      const baseUrl = server.replace(/\/$/, '')
-      
-      // Wybierz najlepszy model do tłumaczeń
-      const model = config.model || 'gemma3:4b' // Zmiana domyślnego modelu na gemma3:4b
-      
-      console.log('Translating with Ollama:', { baseUrl, model, textLength: text.length })
-      
-      // Określ języki dla promptu
-      const sourceLangName = sourceLang === 'auto' ? 'the original' : 
-                            (sourceLang === 'pl' ? 'Polish' : 
-                             sourceLang === 'en' ? 'English' : sourceLang)
-      const targetLangName = targetLang === 'pl' ? 'Polish' : 
-                            (targetLang === 'en' ? 'English' : targetLang)
-      
-      // Lepszy prompt dla tłumaczeń
-      const prompt = `You are a professional translator. Translate the following text from ${sourceLangName} to ${targetLangName}. Return ONLY the translation, no explanations, no additional text, no quotes.
+      const server = (config.server || 'http://localhost:11434').replace(/\/$/, '')
+      const model = config.model || 'llama3.2:latest'
 
-Original text: ${text}
-
-Translation:`
-      
-      console.log('Prompt:', prompt.substring(0, 100) + '...')
-      
-      const response = await axios.post(
-        `${baseUrl}/api/generate`,
-        {
-          model,
-          prompt,
-          stream: false,
-          options: {
-            temperature: 0.1,
-            num_predict: 500,
-            top_k: 20,
-            top_p: 0.9,
-            repeat_penalty: 1.1
-          }
-        },
-        { 
-          timeout: 60000,
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        }
-      )
-      
-      if (!response.data || !response.data.response) {
-        throw new Error('No response from Ollama')
+      const LANG_NAMES: Record<string, string> = {
+        pl: 'Polish', en: 'English', de: 'German', fr: 'French',
+        es: 'Spanish', it: 'Italian', ru: 'Russian', uk: 'Ukrainian',
+        cs: 'Czech', sk: 'Slovak', zh: 'Chinese', ja: 'Japanese',
+        ko: 'Korean', ar: 'Arabic', pt: 'Portuguese', nl: 'Dutch',
       }
-      
-      // Wyczyść odpowiedź
-      let translated = response.data.response.trim()
-      
-      // Usuń "Translation:" jeśli model zwrócił
-      translated = translated.replace(/^Translation:\s*/i, '')
-      // Usuń cudzysłowy
-      translated = translated.replace(/^["']|["']$/g, '')
-      // Usuń "Odpowiedź:" itp
-      translated = translated.replace(/^(Answer:|Response:|Odpowiedź:)\s*/i, '')
-      
-      console.log('Translated:', translated.substring(0, 100))
-      
-      return translated
+      const srcName = sourceLang === 'auto' ? 'the source language' : (LANG_NAMES[sourceLang] || sourceLang)
+      const tgtName = LANG_NAMES[targetLang] || targetLang
+
+      // Models using {{ .Content }} template (e.g. jnowakk11/translate-polish) MUST use /api/chat.
+      // /api/generate fills {{ .Prompt }} not {{ .Content }}, producing "<no value>" output.
+      const isSpecialistModel = /translat/i.test(model)
+
+      console.log(`Ollama: ${server} model=${model} specialist=${isSpecialistModel} chars=${text.length}`)
+
+      let rawResponse: string
+
+      if (isSpecialistModel) {
+        // /api/chat correctly fills {{ .Content }} in custom Modelfile templates.
+        // Send raw text only — the model built-in SYSTEM handles EN→PL translation.
+        const res = await axios.post(
+          `${server}/api/chat`,
+          {
+            model,
+            messages: [{ role: 'user', content: text }],
+            stream: false,
+            options: { temperature: 0.1, num_predict: Math.max(200, text.length * 4) },
+          },
+          { timeout: 120000, headers: { 'Content-Type': 'application/json' } }
+        )
+        rawResponse = res.data?.message?.content ?? ''
+        console.log(`Ollama chat (${model}): "${rawResponse.substring(0, 120)}"`)
+      } else {
+        // General models: /api/generate with instruction prompt
+        const prompt = `Translate from ${srcName} to ${tgtName}. Output ONLY the translation, nothing else.\n\n${text}`
+        const res = await axios.post(
+          `${server}/api/generate`,
+          {
+            model,
+            prompt,
+            stream: false,
+            options: { temperature: 0.1, num_predict: Math.max(200, text.length * 4), top_k: 40, repeat_penalty: 1.1 },
+          },
+          { timeout: 120000, headers: { 'Content-Type': 'application/json' } }
+        )
+        rawResponse = res.data?.response ?? ''
+        console.log(`Ollama generate (${model}): "${rawResponse.substring(0, 120)}"`)
+
+        // Strip common preamble from general models
+        rawResponse = rawResponse
+          .replace(/^(Translation|Tłumaczenie|Translated text|Output|Result)\s*[:：]\s*/i, '')
+          .replace(/^["'`]|["'`]$/g, '')
+          .replace(/^(Here is|Here\'s|Oto)\s+.*?:\s*/i, '')
+          .trim()
+      }
+
+      // Safety: if model returned Go template artifact or empty string, use original
+      if (!rawResponse || rawResponse.includes('<no value>')) {
+        console.warn(`Ollama bad response for "${text.substring(0, 50)}" — using original`)
+        return text
+      }
+
+      return rawResponse
+
     } catch (error: any) {
-      console.error('Ollama error details:', {
-        message: error.message,
-        code: error.code,
-        status: error.response?.status,
-        data: error.response?.data,
-        config: error.config?.url
-      })
-      
-      if (error.code === 'ECONNREFUSED') {
-        throw new Error(`Cannot connect to Ollama at ${config.server}. Make sure Ollama is running (ollama serve)`)
+      if (error.code === 'ECONNREFUSED' || error.code === 'ECONNRESET') {
+        throw new Error(`Nie można połączyć z Ollama (${config.server}). Upewnij się że Ollama działa: ollama serve`)
       }
       if (error.response?.status === 404) {
-        throw new Error(`Model '${config.model}' not found. Available models: llama3.2:1b, gemma3:4b, translator-pl-en:latest`)
+        throw new Error(`Model "${config.model}" nie znaleziony. Pobierz go: ollama pull ${config.model}`)
       }
+      if (error.code === 'ETIMEDOUT' || error.code === 'ECONNABORTED') {
+        throw new Error(`Timeout — model "${config.model}" za wolno odpowiada. Spróbuj mniejszego modelu.`)
+      }
+      console.error('Ollama error:', error.message, error.response?.data)
       throw error
     }
   }
 }
-
 // DeepSeek
 export class DeepSeekEngine implements TranslationEngine {
   async translate(text: string, sourceLang: string, targetLang: string, config: any): Promise<string> {
@@ -259,6 +258,120 @@ export class OpenRouterEngine implements TranslationEngine {
   }
 }
 
+// Anthropic Claude
+export class AnthropicEngine implements TranslationEngine {
+  async translate(text: string, sourceLang: string, targetLang: string, config: any): Promise<string> {
+    const apiKey = config.api_key
+    if (!apiKey) throw new Error('Anthropic API key required')
+    const model = config.model || 'claude-3-haiku-20240307'
+    const response = await axios.post(
+      'https://api.anthropic.com/v1/messages',
+      {
+        model,
+        max_tokens: 1024,
+        messages: [{
+          role: 'user',
+          content: `Translate from ${sourceLang === 'auto' ? 'detected language' : sourceLang} to ${targetLang}. Return ONLY the translation:\n\n${text}`
+        }],
+      },
+      {
+        headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+        timeout: 30000,
+      }
+    )
+    return response.data.content[0].text.trim()
+  }
+}
+
+// Azure Translator
+export class AzureEngine implements TranslationEngine {
+  async translate(text: string, sourceLang: string, targetLang: string, config: any): Promise<string> {
+    const apiKey = config.api_key
+    if (!apiKey) throw new Error('Azure API key required')
+    const endpoint = config.endpoint || 'https://api.cognitive.microsofttranslator.com'
+    const region = config.region || 'westeurope'
+    const params: any = { 'api-version': '3.0', to: targetLang }
+    if (sourceLang !== 'auto') params.from = sourceLang
+    const response = await axios.post(
+      `${endpoint}/translate`,
+      [{ text }],
+      {
+        params,
+        headers: {
+          'Ocp-Apim-Subscription-Key': apiKey,
+          'Ocp-Apim-Subscription-Region': region,
+          'Content-Type': 'application/json',
+        },
+        timeout: 15000,
+      }
+    )
+    return response.data[0].translations[0].text
+  }
+}
+
+// Google Cloud Translation
+export class GoogleCloudEngine implements TranslationEngine {
+  async translate(text: string, sourceLang: string, targetLang: string, config: any): Promise<string> {
+    const apiKey = config.api_key
+    if (!apiKey) throw new Error('Google Cloud API key required')
+    const response = await axios.post(
+      `https://translation.googleapis.com/language/translate/v2?key=${apiKey}`,
+      { q: text, target: targetLang, source: sourceLang === 'auto' ? undefined : sourceLang, format: 'text' },
+      { timeout: 15000 }
+    )
+    return response.data.data.translations[0].translatedText
+  }
+}
+
+// DeepL Pro
+export class DeepLEngine implements TranslationEngine {
+  async translate(text: string, sourceLang: string, targetLang: string, config: any): Promise<string> {
+    const authKey = config.auth_key
+    if (!authKey) throw new Error('DeepL auth key required')
+    const isFree = authKey.endsWith(':fx')
+    const baseUrl = isFree ? 'https://api-free.deepl.com' : 'https://api.deepl.com'
+    const response = await axios.post(
+      `${baseUrl}/v2/translate`,
+      {
+        text: [text],
+        target_lang: targetLang.toUpperCase(),
+        source_lang: sourceLang === 'auto' ? undefined : sourceLang.toUpperCase(),
+      },
+      {
+        headers: { 'Authorization': `DeepL-Auth-Key ${authKey}`, 'Content-Type': 'application/json' },
+        timeout: 15000,
+      }
+    )
+    return response.data.translations[0].text
+  }
+}
+
+// Custom API (OpenAI-compatible)
+export class CustomEngine implements TranslationEngine {
+  async translate(text: string, sourceLang: string, targetLang: string, config: any): Promise<string> {
+    const apiUrl = config.api_url
+    if (!apiUrl) throw new Error('Custom API URL required')
+    const response = await axios.post(
+      apiUrl,
+      {
+        model: config.model || 'default',
+        messages: [
+          { role: 'system', content: `Translate from ${sourceLang} to ${targetLang}. Return only the translation.` },
+          { role: 'user', content: text },
+        ],
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(config.api_key ? { 'Authorization': `Bearer ${config.api_key}` } : {}),
+        },
+        timeout: 30000,
+      }
+    )
+    return response.data.choices[0].message.content.trim()
+  }
+}
+
 // Mapowanie silników
 const engines: Record<string, TranslationEngine> = {
   googlegtx: new GoogleGTXEngine(),
@@ -267,6 +380,11 @@ const engines: Record<string, TranslationEngine> = {
   ollama: new OllamaEngine(),
   deepseek: new DeepSeekEngine(),
   openai: new OpenRouterEngine(),
+  anthropic: new AnthropicEngine(),
+  azure: new AzureEngine(),
+  google: new GoogleCloudEngine(),
+  deepl: new DeepLEngine(),
+  custom: new CustomEngine(),
 }
 
 export async function translate(
