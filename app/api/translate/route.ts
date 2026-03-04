@@ -11,6 +11,7 @@ const UPLOAD_DIR = path.join(process.cwd(), 'uploads')
 declare global {
   var translationProgress: Map<string, any>
   var translationQueues: Map<string, any[]>
+  var translationAbortSignals: Map<string, { aborted: boolean }>
 }
 
 if (!global.translationProgress) {
@@ -25,7 +26,7 @@ if (!global.translationAbortSignals) {
 
 const translationProgress = global.translationProgress
 const translationQueues = global.translationQueues
-const translationAbortSignals = (global as any).translationAbortSignals as Map<string, { aborted: boolean }>
+const translationAbortSignals = global.translationAbortSignals
 
 // Funkcja do liczenia bloków z pliku
 async function getTotalBlocks(filepath: string, filename: string): Promise<number> {
