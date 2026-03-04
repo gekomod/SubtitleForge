@@ -1,158 +1,225 @@
-# SubtitleForge • AI Translation
+<div align="center">
 
-Cinema-grade AI subtitle translation with support for 11 AI engines, real-time preview, and local subtitle library.
+# ⚡ SubtitleForge
 
+### Cinema-grade AI subtitle translation studio
+
+**[subtitleforge.pl](https://subtitleforge.pl)** · [Report Bug](https://github.com/yourusername/subtitleforge/issues) · [Request Feature](https://github.com/yourusername/subtitleforge/issues)
+
+[![Next.js](https://img.shields.io/badge/Next.js_14-black?style=flat-square&logo=next.js)](https://nextjs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://typescriptlang.org)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
+[![SQLite](https://img.shields.io/badge/SQLite-003B57?style=flat-square&logo=sqlite&logoColor=white)](https://sqlite.org)
 [![Netlify Status](https://api.netlify.com/api/v1/badges/804e4da8-be01-40a3-8fef-4133921ca9ad/deploy-status)](https://app.netlify.com/projects/teal-kangaroo-9931e5/deploys)
 
-## ✨ Features
-
-### 🎯 Core Functionality
-- **Multi-format Support**: SRT, ASS/SSA, VTT subtitle formats
-- **11 AI Translation Engines**: From local to cloud-based solutions
-  - LibreTranslate (local, open-source)
-  - Google GTX (free)
-  - Ollama (local AI models)
-  - DeepLX (free DeepL proxy)
-  - DeepSeek API
-  - OpenRouter (Llama, GPT, Claude)
-  - Anthropic Claude
-  - Azure Translator
-  - Google Cloud Translation
-  - DeepL Pro
-  - Custom API support
-- **Format Preservation**: Maintains ASS styling tags (`{\an8}`) during translation
-
-### 🚀 User Experience
-- **Drag & Drop Upload**: Simple file upload with instant preview
-- **Real-time Progress**: Live progress bar with block-by-block updates
-- **Live Preview**: See translations appear in real-time as they're processed
-- **Side-by-Side View**: Compare original and translated subtitles
-- **Auto Language Detection**: Automatic source language identification
-- **Dark/Light Theme**: Full theme support with persistent preference
-
-### 📚 Library Management
-- **Local Subtitle Library**: Automatically save all translations
-- **Search & Filter**: Find translations by title or language
-- **Recent Translations**: Quick access to recently translated files
-- **One-click Download**: Direct download of translated files
-- **Delete Management**: Remove entries from library
-
-### 🔧 Advanced Features
-- **OpenSubtitles Integration**: Search and download subtitles from OpenSubtitles.com
-- **Engine Configuration**: Configure API keys, servers, and models for each engine
-- **Connection Testing**: Test engine connectivity before use
-- **Smart Time Estimates**: Realistic translation time estimates based on engine speed
+</div>
 
 ---
 
-## 🛠️ Tech Stack
+## Co to jest?
 
-| Category | Technologies |
-|----------|-------------|
-| **Framework** | Next.js 14 (App Router) |
-| **Language** | TypeScript |
-| **Styling** | Tailwind CSS |
-| **State Management** | Zustand |
-| **Database** | SQLite (via sql.js) |
-| **Icons** | Bootstrap Icons |
-| **HTTP Client** | Axios |
-| **Notifications** | React Hot Toast |
-| **Date Handling** | date-fns |
+SubtitleForge to lokalnie hostowana aplikacja webowa do tłumaczenia napisów filmowych przy użyciu AI. Obsługuje **11 silników tłumaczących** — od bezpłatnych lokalnych (Ollama, LibreTranslate, DeepLX) po profesjonalne API chmurowe (DeepL, Azure, Anthropic). Zaprojektowana z myślą o prywatności — tłumaczenie może odbywać się w 100% lokalnie, bez wysyłania danych na zewnętrzne serwery.
 
 ---
 
-## 📋 Prerequisites
+## Funkcje
 
-- Node.js 18+ or 20+ (LTS recommended)
-- npm or yarn or pnpm
-- For local engines (optional):
-  - [LibreTranslate](https://libretranslate.com/)
-  - [Ollama](https://ollama.ai/)
-  - [DeepLX](https://github.com/OwO-Network/DeepLX)
+### Tłumaczenie
+- **Formaty napisów**: SRT, ASS/SSA, VTT — z pełnym zachowaniem tagów formatowania (`{\an8}`, `{\b1}` itp.)
+- **Podgląd na żywo**: tłumaczenie pojawia się blok po bloku podczas pracy
+- **Porównanie side-by-side**: oryginalny tekst obok tłumaczenia
+- **Auto-detekcja języka**: automatyczne rozpoznanie języka źródłowego
+- **Batch processing**: regulowany rozmiar paczki (1–10 bloków)
+- **ETA kalkulator**: estymowany czas zakończenia z wykresem prędkości
+
+### Silniki tłumaczące
+
+| Silnik | Typ | Klucz API | Opis |
+|--------|-----|-----------|------|
+| **LibreTranslate** | 🏠 Lokalny | Nie | Open-source, własny serwer |
+| **Google GTX** | 🌐 Darmowy | Nie | Nieoficjalne API Google Translate |
+| **Ollama** | 🏠 Lokalny | Nie | Lokalne modele LLM (Llama, Mistral, Gemma…) |
+| **DeepLX** | 🏠 Lokalny | Nie | Darmowy proxy DeepL |
+| **DeepSeek** | ☁️ Chmura | Tak | Zaawansowane modele AI, tanie API |
+| **OpenRouter** | ☁️ Chmura | Tak | Dostęp do Llama, GPT-4, Claude i innych |
+| **Anthropic Claude** | ☁️ Chmura | Tak | Modele Claude (Haiku, Sonnet, Opus) |
+| **Azure Translator** | ☁️ Chmura | Tak | Microsoft Cognitive Services |
+| **Google Cloud** | ☁️ Chmura | Tak | Google Cloud Translation API v2 |
+| **DeepL Pro** | ☁️ Chmura | Tak | Profesjonalne tłumaczenie DeepL |
+| **Custom API** | ⚙️ Własny | Opcjonalnie | Dowolne OpenAI-compatible API |
+
+### Biblioteka i historia
+- **Lokalna baza SQLite**: automatyczny zapis każdego tłumaczenia
+- **Wyszukiwanie rozmyte**: szukaj po tytule, "Our Universe" znajdzie `Our.Universe.S01E02.1080p...`
+- **Historia tłumaczeń**: lista z nazwami plików, silnikiem, datą i przyciskiem pobierania
+- **Widok siatki / lista**: dwa tryby wyświetlania historii
+- **Sortowanie**: po dacie, nazwie lub liczbie bloków
+
+### UI / UX
+- **Tryb ciemny / jasny**: pełne wsparcie, zapamiętywane lokalnie
+- **Skróty klawiszowe**: `Spacja` = tłumacz, `?` = lista skrótów, `Ctrl+R` = reset
+- **Ostatnio używane silniki**: szybki dostęp do poprzednio używanych
+- **Kółko myszy na batch size**: intuitive scroll control
+- **Animacja confetti** przy sukcesie 🎉
+- **OpenSubtitles**: wyszukiwanie i pobieranie napisów z bazy zewnętrznej (wymaga klucza API)
 
 ---
 
-## 🔧 Installation
+## Wymagania
+
+- **Node.js** 18+ lub 20 LTS
+- **npm** / yarn / pnpm
+
+Opcjonalnie (dla silników lokalnych):
+- [Ollama](https://ollama.ai/) — `ollama serve` + `ollama pull llama3.2`
+- [LibreTranslate](https://libretranslate.com/) — Docker lub pip
+- [DeepLX](https://github.com/OwO-Network/DeepLX) — `deeplx` binary
+
+---
+
+## Instalacja
 
 ```bash
-# 1. Clone the repository
-git clone https://github.com/yourusername/subtitleforge-nextjs.git
-cd subtitleforge-nextjs
+# 1. Sklonuj repozytorium
+git clone https://github.com/yourusername/subtitleforge.git
+cd subtitleforge
 
-# 2. Install dependencies
+# 2. Zainstaluj zależności
 npm install
-# or
-yarn install
-# or
-pnpm install
 
-# 3. Set up environment variables
+# 3. Skopiuj i edytuj plik środowiskowy
 cp .env.example .env.local
+
+# 4. Utwórz wymagane katalogi
+mkdir -p uploads translated data
+
+# 5. Uruchom serwer deweloperski
+npm run dev
 ```
 
-## Edit .env.local with your configuration:
+Otwórz [http://localhost:3000](http://localhost:3000) w przeglądarce.
 
-```bash
-# Server
-PORT=3000
-NODE_ENV=development
+---
 
-# Security
-SECRET_KEY=your-secret-key-change-in-production
+## Konfiguracja środowiska (`.env.local`)
 
-# Folders
+```env
+# Katalogi robocze
 UPLOAD_DIR=./uploads
 TRANSLATED_DIR=./translated
 DB_PATH=./data/library.db
 CACHE_DB_PATH=./data/cache.db
 
-# TTL settings
+# TTL plików tymczasowych (sekundy)
 FILE_TTL=3600
 TASK_TTL=7200
 
-# Default engine configs (optional)
+# Domyślne adresy silników lokalnych (opcjonalne)
 LIBRETRANSLATE_SERVER=http://localhost:5010
 OLLAMA_SERVER=http://localhost:11434
 OLLAMA_MODEL=llama3.2:latest
 DEEPLX_SERVER=http://localhost:1188
 ```
 
-## 4. Create required directories
-```bash
-mkdir -p uploads translated data
+---
+
+## Struktura projektu
+
+```
+subtitleforge/
+├── app/
+│   ├── api/
+│   │   ├── translate/        # Endpoint tłumaczenia (SSE)
+│   │   ├── upload/           # Upload i parsowanie pliku
+│   │   ├── progress/         # Server-Sent Events progress
+│   │   ├── preview/          # Podgląd oryginalny i tłumaczenia
+│   │   ├── library/          # CRUD biblioteki (SQLite)
+│   │   ├── config/           # Konfiguracja silników
+│   │   └── test-connection/  # Test połączenia z silnikami
+│   ├── download/[filename]/  # Pobieranie przetłumaczonych plików
+│   └── globals.css           # Zmienne CSS + tryb jasny/ciemny
+├── components/
+│   ├── layout/               # Header, Footer, MainTabs
+│   ├── tabs/                 # TranslateTab, SearchTab, HistoryTab
+│   ├── ui/                   # FileUpload, ProgressBar, PreviewPanel…
+│   ├── modals/               # ConfigModal, TestModal
+│   └── providers/            # ThemeProvider
+├── lib/
+│   ├── translators/
+│   │   ├── engines.ts        # 11 implementacji silników
+│   │   └── worker.ts         # Parser SRT/ASS/VTT + generator
+│   ├── db/
+│   │   ├── library.ts        # SQLite CRUD + wyszukiwanie
+│   │   └── cache.ts          # Cache tłumaczeń
+│   └── utils/                # Language detection, helpers
+├── uploads/                  # Tymczasowe pliki wejściowe
+├── translated/               # Przetłumaczone pliki wyjściowe
+└── data/
+    └── library.db            # SQLite — biblioteka tłumaczeń
 ```
 
-## 5. Run the development server
+---
+
+## Użycie Ollama z modelem tłumaczącym
+
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
+# Pobierz ogólny model
+ollama pull llama3.2:latest
+
+# Lub specjalistyczny model tłumaczący
+ollama pull jnowakk11/translate-polish
+
+# Uruchom serwer (domyślnie port 11434)
+ollama serve
 ```
 
-## 6. Open your browser
-Navigate to http://localhost:3000
+W konfiguracji silnika Ollama w aplikacji wpisz nazwę modelu, np. `jnowakk11/translate-polish`.
+SubtitleForge automatycznie wykrywa modele specjalistyczne (zawierające `translat` w nazwie) i dostosowuje format zapytania — zamiast instrukcji systemowej wysyła czysty tekst do tłumaczenia.
 
-## 🔌 Translation Engines
+---
 
-### Local Engines (No API Key Required)
+## Uruchomienie produkcyjne
 
-| Engine          | Description                      | Default URL
-| --------------- | -------------------------------- | ---------------------- |
-| LibreTranslate  | Open-source, self-hosted         | http://localhost:5010  |
-| Google GTX      | Free Google Translate API        | -                      |
-| Ollama          | Local AI models (Llama, Mistral) | http://localhost:11434 |
-| DeepLX          | Free DeepL proxy                  | http://localhost:1188 |
+```bash
+npm run build
+npm start
+```
 
-### Cloud Engines (API Key Required)
+Lub z PM2:
+```bash
+pm2 start npm --name "subtitleforge" -- start
+pm2 save
+```
 
-| Engine          | Description                      | API Key URL
-| --------------- | -------------------------------- | ------------------------------------ |
-| DeepSeek        | Advanced AI models               | https://platform.deepseek.com        |
-| OpenRouter      | Access to Llama, GPT, Claude     | https://openrouter.ai/keys           |
-| Anthropic Claude| Claude AI models                 | https://console.anthropic.com        |
-| Azure Translator| Microsoft cloud                  | https://portal.azure.com             |
-| Google Cloud    | Google Cloud Translation         | https://console.cloud.google.com     |
-| DeepL Pro       | Premium translation              | https://www.deepl.com/pro            |
-| Custom API      | Bring your own API               | -                                    |
+---
+
+## Znane ograniczenia
+
+- Pliki tymczasowe (uploads, translated) są czyszczone po czasie określonym w `FILE_TTL` — nie przechowuj oryginalnych plików tylko w katalogu uploads
+- Tłumaczenie działa synchronicznie per plik — równoległe zadania nie są wspierane
+- Modele Ollama odpowiadają wolniej dla dużych plików (>500 bloków) — zalecany batch size 1
+
+---
+
+## Stack technologiczny
+
+| Kategoria | Technologia |
+|-----------|-------------|
+| Framework | Next.js 14 (App Router) |
+| Język | TypeScript |
+| Styling | Tailwind CSS + CSS Variables |
+| State | Zustand |
+| Baza danych | SQLite (better-sqlite3) |
+| Streaming | Server-Sent Events (SSE) |
+| HTTP | Axios |
+| Ikony | Bootstrap Icons |
+| Powiadomienia | React Hot Toast |
+| Fonty | Syne + JetBrains Mono |
+
+---
+
+<div align="center">
+
+Made with ☕ for subtitle enthusiasts · [subtitleforge.pl](https://subtitleforge.pl)
+
+</div>

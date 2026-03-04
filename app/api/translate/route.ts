@@ -19,9 +19,13 @@ if (!global.translationProgress) {
 if (!global.translationQueues) {
   global.translationQueues = new Map()
 }
+if (!global.translationAbortSignals) {
+  global.translationAbortSignals = new Map<string, { aborted: boolean }>()
+}
 
 const translationProgress = global.translationProgress
 const translationQueues = global.translationQueues
+const translationAbortSignals = (global as any).translationAbortSignals as Map<string, { aborted: boolean }>
 
 // Funkcja do liczenia bloków z pliku
 async function getTotalBlocks(filepath: string, filename: string): Promise<number> {
@@ -115,12 +119,17 @@ export async function POST(request: NextRequest) {
 
     console.log(`Starting translateFile: uploads/${filename} → translated/${outputFilename} (${totalBlocks} blocks, engine: ${engine})`)
 
-    // Uruchom tłumaczenie w tle — używamy RZECZYWISTEJ nazwy pliku (filename), nie saved_filename
+    // Create abort signal for this task
+    const abortSignal = { aborted: false }
+    translationAbortSignals.set(taskId, abortSignal)
+
+    // Uruchom tłumaczenie w tle
     translateFile(
       filename,
       outputFilename,
       { engine, source_lang, target_lang, totalBlocks, ...config },
       (progress, current, total, liveData) => {
+        if (abortSignal.aborted) return  // skip progress updates after abort
         // Aktualizuj progress w store
         translationProgress.set(taskId, {
           ...translationProgress.get(taskId),
@@ -162,8 +171,16 @@ export async function POST(request: NextRequest) {
           })
           translationQueues.set(taskId, finalQueue)
         }
-      }
+      },
+      abortSignal
     ).catch(error => {
+      translationAbortSignals.delete(taskId)
+      if (error.message === 'ABORTED') {
+        const queue = translationQueues.get(taskId) || []
+        queue.push({ error: 'Tłumaczenie anulowane', status: 'error' })
+        translationQueues.set(taskId, queue)
+        return
+      }
       console.error('Translation error:', error)
       
       translationProgress.set(taskId, {
@@ -192,5 +209,24 @@ export async function POST(request: NextRequest) {
       { success: false, error: 'Failed to start translation' },
       { status: 500 }
     )
+  }
+}
+
+// DELETE /api/translate — abort a running translation
+export async function DELETE(request: NextRequest) {
+  try {
+    const { task_id } = await request.json()
+    if (!task_id) return NextResponse.json({ success: false, error: 'Brak task_id' })
+    
+    const signal = translationAbortSignals.get(task_id)
+    if (signal) {
+      signal.aborted = true
+      translationAbortSignals.delete(task_id)
+      console.log('Aborted task:', task_id)
+      return NextResponse.json({ success: true, message: 'Tłumaczenie anulowane' })
+    }
+    return NextResponse.json({ success: false, error: 'Task not found or already finished' })
+  } catch {
+    return NextResponse.json({ success: false, error: 'Abort failed' }, { status: 500 })
   }
 }

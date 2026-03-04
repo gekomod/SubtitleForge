@@ -8,18 +8,33 @@ const FMTS = [
   { ext:'SSA', c:'#b57bff', desc:'SubStation' },
 ]
 
-export default function FileUpload({ onUpload, isUploading }: { onUpload:(f:File)=>void; isUploading:boolean }) {
+interface Props {
+  onUpload: (f: File) => void
+  onMultiUpload?: (files: File[]) => void
+  isUploading: boolean
+}
+
+export default function FileUpload({ onUpload, onMultiUpload, isUploading }: Props) {
   const ref  = useRef<HTMLInputElement>(null)
   const [drag, setDrag] = useState(false)
-  const [cnt, setCnt]   = useState(0)
+  const [cnt,  setCnt]  = useState(0)
 
-  const onEnter = useCallback((e:React.DragEvent) => { e.preventDefault(); setCnt(c=>c+1); setDrag(true) },[])
-  const onLeave = useCallback((e:React.DragEvent) => { e.preventDefault(); setCnt(c=>{ const n=c-1; if(n<=0)setDrag(false); return Math.max(0,n) }) },[])
-  const onOver  = useCallback((e:React.DragEvent) => e.preventDefault(),[])
-  const onDrop  = useCallback((e:React.DragEvent) => {
+  const handleFiles = useCallback((files: FileList | null) => {
+    if (!files || files.length === 0) return
+    const arr = Array.from(files).filter(f => /\.(srt|ass|ssa|vtt)$/i.test(f.name))
+    if (arr.length === 0) return
+    if (arr.length === 1) { onUpload(arr[0]); return }
+    if (onMultiUpload) onMultiUpload(arr)
+    else onUpload(arr[0])
+  }, [onUpload, onMultiUpload])
+
+  const onEnter = useCallback((e: React.DragEvent) => { e.preventDefault(); setCnt(c=>c+1); setDrag(true) }, [])
+  const onLeave = useCallback((e: React.DragEvent) => { e.preventDefault(); setCnt(c=>{ const n=c-1; if(n<=0)setDrag(false); return Math.max(0,n) }) }, [])
+  const onOver  = useCallback((e: React.DragEvent) => e.preventDefault(), [])
+  const onDrop  = useCallback((e: React.DragEvent) => {
     e.preventDefault(); setDrag(false); setCnt(0)
-    const f = e.dataTransfer.files[0]; if(f) onUpload(f)
-  },[onUpload])
+    handleFiles(e.dataTransfer.files)
+  }, [handleFiles])
 
   return (
     <div
@@ -36,8 +51,7 @@ export default function FileUpload({ onUpload, isUploading }: { onUpload:(f:File
       </div>
 
       {/* Body */}
-      <div className={`bg-[var(--s2)] grid-overlay py-8 px-6 text-center transition-all duration-300
-        ${drag ? 'bg-[rgba(240,165,0,0.04)]' : ''}`}>
+      <div className={`bg-[var(--s2)] grid-overlay py-8 px-6 text-center transition-all duration-300 ${drag ? 'bg-[rgba(240,165,0,0.04)]' : ''}`}>
 
         {isUploading ? (
           <div className="flex flex-col items-center gap-3">
@@ -49,7 +63,7 @@ export default function FileUpload({ onUpload, isUploading }: { onUpload:(f:File
             </div>
             <div>
               <p className="text-sm font-semibold text-[var(--text)]">Analizowanie pliku…</p>
-              <p className="font-mono text-[11px] text-[var(--muted)] mt-1">Wykrywanie języka i bloków</p>
+              <p className="font-mono text-[11px] text-[var(--muted)] mt-1">Wykrywanie języka · kodowania · bloków</p>
             </div>
           </div>
 
@@ -59,18 +73,16 @@ export default function FileUpload({ onUpload, isUploading }: { onUpload:(f:File
               <i className="bi bi-box-arrow-in-down text-[var(--amber)] text-2xl"></i>
             </div>
             <p className="text-base font-bold text-[var(--amber)]">Upuść tutaj</p>
-            <p className="font-mono text-[11px] text-[var(--muted)]">Obsługuję SRT · ASS · SSA · VTT</p>
+            <p className="font-mono text-[11px] text-[var(--muted)]">Możesz wrzucić wiele plików naraz →&nbsp;kolejka</p>
           </div>
 
         ) : (
           <div className="flex flex-col items-center gap-4">
-            {/* Upload icon */}
             <div className="relative w-14 h-14">
               <div className="absolute inset-0 bg-[var(--s4)] border border-[var(--border2)] rounded-2xl group-hover:border-[var(--border3)] transition-all"></div>
               <div className="absolute inset-0 flex items-center justify-center">
                 <i className="bi bi-cloud-arrow-up text-[var(--text2)] group-hover:text-[var(--amber)] text-2xl transition-colors duration-200"></i>
               </div>
-              {/* Corner brackets */}
               <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-[var(--adim2)] rounded-tl-lg group-hover:border-[var(--adim3)] transition-colors"></div>
               <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-[var(--adim2)] rounded-tr-lg group-hover:border-[var(--adim3)] transition-colors"></div>
               <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-[var(--adim2)] rounded-bl-lg group-hover:border-[var(--adim3)] transition-colors"></div>
@@ -79,12 +91,11 @@ export default function FileUpload({ onUpload, isUploading }: { onUpload:(f:File
 
             <div>
               <p className="text-sm font-semibold text-[var(--text)] group-hover:text-[var(--amber)] transition-colors">
-                Przeciągnij plik lub <span className="text-[var(--amber)]">wybierz</span>
+                Przeciągnij plik(i) lub <span className="text-[var(--amber)]">wybierz</span>
               </p>
-              <p className="font-mono text-[11px] text-[var(--muted)] mt-1">Maks. 100 MB · UTF-8, Windows-1250, ISO-8859</p>
+              <p className="font-mono text-[11px] text-[var(--muted)] mt-1">Wiele plików = automatyczna kolejka · UTF-8, Win-1250, ISO-8859</p>
             </div>
 
-            {/* Format badges */}
             <div className="flex gap-2 flex-wrap justify-center">
               {FMTS.map(f => (
                 <div key={f.ext} className="flex flex-col items-center gap-0.5">
@@ -105,8 +116,9 @@ export default function FileUpload({ onUpload, isUploading }: { onUpload:(f:File
         <span className="font-mono text-[9px] text-[var(--muted)] tracking-widest uppercase">LOAD REEL</span>
       </div>
 
-      <input ref={ref} type="file" accept=".srt,.ass,.ssa,.vtt"
-        onChange={e => { const f=e.target.files?.[0]; if(f)onUpload(f); e.target.value='' }}
+      {/* Multiple files support */}
+      <input ref={ref} type="file" accept=".srt,.ass,.ssa,.vtt" multiple
+        onChange={e => { handleFiles(e.target.files); e.target.value='' }}
         className="hidden" />
     </div>
   )

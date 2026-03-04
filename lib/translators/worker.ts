@@ -1,6 +1,34 @@
 import { translate } from './engines'
 import fs from 'fs/promises'
 import path from 'path'
+import { getCachedTranslation, saveToCache } from '@/lib/db/cache'
+import { readSubtitleFile } from '@/lib/utils/encoding'
+import fs2 from 'fs'
+import path2 from 'path'
+
+// Translation Memory — load once per process
+let _tmEntries: Array<{find:string;replace:string;enabled:boolean}> | null = null
+function loadTM() {
+  if (_tmEntries !== null) return _tmEntries
+  try {
+    const p = path2.join(process.cwd(), 'data', 'translation_memory.json')
+    _tmEntries = JSON.parse(fs2.readFileSync(p, 'utf-8')).filter((e:any) => e.enabled !== false)
+  } catch { _tmEntries = [] }
+  return _tmEntries!
+}
+function applyTM(text: string): string {
+  let result = text
+  for (const e of loadTM()) {
+    if (!e.find) continue
+    try {
+      const rx = new RegExp(e.find.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'), 'gi')
+      result = result.replace(rx, e.replace)
+    } catch {}
+  }
+  return result
+}
+// Invalidate TM cache on each translateFile call
+function invalidateTM() { _tmEntries = null }
 
 const UPLOAD_DIR = path.join(process.cwd(), 'uploads')
 const TRANSLATED_DIR = path.join(process.cwd(), 'translated')
@@ -271,7 +299,8 @@ export async function translateFile(
   inputFilename: string,
   outputFilename: string,
   config: any,
-  onProgress: (progress: number, current: number, total: number, liveData?: any) => void
+  onProgress: (progress: number, current: number, total: number, liveData?: any) => void,
+  abortSignal?: { aborted: boolean }
 ): Promise<string> {
   await ensureDir()
   
@@ -293,13 +322,14 @@ export async function translateFile(
     throw new Error(`File not found: ${inputFilename}`)
   }
   
-  // Wczytaj plik
+  // Read file with encoding detection
   console.log('Reading input file...')
-  const content = await fs.readFile(inputPath, 'utf-8')
-  if (!content) {
+  const rawBuffer = await fs.readFile(inputPath)
+  if (!rawBuffer || rawBuffer.length === 0) {
     throw new Error('File is empty')
   }
-  console.log(`✓ File read: ${content.length} bytes`)
+  const { content, encoding } = readSubtitleFile(rawBuffer)
+  console.log(`✓ File read: ${rawBuffer.length} bytes, encoding: ${encoding}`)
   
   const ext = path.extname(inputFilename).toLowerCase()
   console.log('File extension:', ext)
@@ -328,13 +358,34 @@ export async function translateFile(
       console.log(`\n[${i + 1}/${totalBlocks}] Translating block ${block.id}:`)
       console.log('  Original:', JSON.stringify(block.text.substring(0, 50)) + (block.text.length > 50 ? '...' : ''))
       
-      const translated = await translate(
-        block.text,
-        config.engine,
-        config.source_lang,
-        config.target_lang,
-        config
-      )
+      // Check abort signal
+      if (abortSignal?.aborted) {
+        console.log('Translation aborted at block', i + 1)
+        throw new Error('ABORTED')
+      }
+
+      // Reload TM fresh each file
+      if (i === 0) invalidateTM()
+
+      // Check cache first
+      const cached = getCachedTranslation(block.text, config.source_lang, config.target_lang, config.engine)
+      let translated: string
+      if (cached) {
+        translated = cached
+        console.log('  [CACHE HIT]')
+      } else {
+        translated = await translate(
+          block.text,
+          config.engine,
+          config.source_lang,
+          config.target_lang,
+          config
+        )
+        // Apply Translation Memory post-processing
+        translated = applyTM(translated)
+        // Cache the result
+        saveToCache(block.text, config.source_lang, config.target_lang, config.engine, translated)
+      }
       
       console.log('  Translated:', JSON.stringify(translated.substring(0, 50)) + (translated.length > 50 ? '...' : ''))
       
