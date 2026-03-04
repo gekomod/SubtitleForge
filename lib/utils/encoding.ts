@@ -99,8 +99,8 @@ export function detectEncoding(buf: Buffer): DetectedEncoding {
   const sample = Math.min(buf.length, 8192)
   for (let j = 0; j < sample; j++) {
     const b = buf[j]
-    if (b >= 0x80 && b <= 0x9F) win1250Score++          // Win-1250 only range
-    if (b === 0xB1 || b === 0xA1 || b === 0xB6) iso88592Score++  // ISO-8859-2 Polish
+    if (b >= 0x80 && b <= 0x9F) win1250Score++
+    if (b === 0xB1 || b === 0xA1 || b === 0xB6) iso88592Score++
     if (b >= 0xBC && b <= 0xBF) win1250Score += 0.5
   }
 
