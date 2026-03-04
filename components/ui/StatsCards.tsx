@@ -1,56 +1,25 @@
 'use client'
-
-interface StatsCardsProps {
-  blocks: number
-  chars: number
-  estTime: string
-}
-
-export default function StatsCards({ blocks, chars, estTime }: StatsCardsProps) {
-  const formatNumber = (num: number): string => {
-    return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
-  }
-
+const fmt = (n:number) => n.toLocaleString('pl-PL')
+export default function StatsCards({ blocks, chars, estTime }: { blocks:number; chars:number; estTime:string }) {
+  const stats = [
+    { icon:'bi-collection-play', label:'Bloków',      value:fmt(blocks), accent:'#f5a623', sub:'klatki dialogu' },
+    { icon:'bi-type',            label:'Znaków ~',    value:fmt(chars),  accent:'#4a9eff', sub:'do tłumaczenia' },
+    { icon:'bi-lightning-charge',label:'Szac. czas',  value:estTime,     accent:'#2bbd7e', sub:'przy śr. prędkości' },
+  ]
   return (
     <div className="grid grid-cols-3 gap-2">
-      {/* Bloki */}
-      <div className="bg-[#13151f] border border-[rgba(255,255,255,0.07)] rounded-[12px] p-3 flex items-center gap-2 transition-all duration-200 hover:border-[rgba(124,90,240,0.28)] light-theme:bg-[#f1f5f9] light-theme:border-[rgba(0,0,0,0.08)]">
-        <div className="w-8 h-8 bg-[rgba(124,90,240,0.14)] rounded-[8px] flex items-center justify-center flex-shrink-0 light-theme:bg-[rgba(109,74,255,0.1)]">
-          <i className="bi bi-grid-3x3-gap-fill text-[#7c5af0] text-sm light-theme:text-[#6d4aff]"></i>
+      {stats.map((s,i) => (
+        <div key={i} className="bg-[var(--s2)] rounded-xl p-2.5 border border-[var(--border)] hover:border-[var(--border2)] transition-all duration-200">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <div className="w-5 h-5 rounded flex items-center justify-center" style={{ background:`${s.accent}18` }}>
+              <i className={`bi ${s.icon} text-[10px]`} style={{ color:s.accent }}></i>
+            </div>
+            <span className="text-[9px] font-mono uppercase tracking-widest text-[var(--muted)]">{s.label}</span>
+          </div>
+          <div className="font-mono text-sm font-bold text-[var(--text)] leading-none">{s.value}</div>
+          <div className="text-[9px] text-[var(--muted)] mt-0.5 truncate">{s.sub}</div>
         </div>
-        <div className="flex flex-col min-w-0">
-          <span className="text-[11px] text-[#666980] uppercase tracking-wider light-theme:text-[#475569]">Bloki</span>
-          <span className="text-base font-bold font-mono text-[#dde0ed] leading-tight light-theme:text-[#0f172a]">
-            {formatNumber(blocks)}
-          </span>
-        </div>
-      </div>
-      
-      {/* Znaki */}
-      <div className="bg-[#13151f] border border-[rgba(255,255,255,0.07)] rounded-[12px] p-3 flex items-center gap-2 transition-all duration-200 hover:border-[rgba(124,90,240,0.28)] light-theme:bg-[#f1f5f9] light-theme:border-[rgba(0,0,0,0.08)]">
-        <div className="w-8 h-8 bg-[rgba(124,90,240,0.14)] rounded-[8px] flex items-center justify-center flex-shrink-0 light-theme:bg-[rgba(109,74,255,0.1)]">
-          <i className="bi bi-text-paragraph text-[#7c5af0] text-sm light-theme:text-[#6d4aff]"></i>
-        </div>
-        <div className="flex flex-col min-w-0">
-          <span className="text-[11px] text-[#666980] uppercase tracking-wider light-theme:text-[#475569]">Znaki</span>
-          <span className="text-base font-bold font-mono text-[#dde0ed] leading-tight light-theme:text-[#0f172a]">
-            {formatNumber(chars)}
-          </span>
-        </div>
-      </div>
-      
-      {/* Szac. czas */}
-      <div className="bg-[#13151f] border border-[rgba(255,255,255,0.07)] rounded-[12px] p-3 flex items-center gap-2 transition-all duration-200 hover:border-[rgba(124,90,240,0.28)] light-theme:bg-[#f1f5f9] light-theme:border-[rgba(0,0,0,0.08)]">
-        <div className="w-8 h-8 bg-[rgba(124,90,240,0.14)] rounded-[8px] flex items-center justify-center flex-shrink-0 light-theme:bg-[rgba(109,74,255,0.1)]">
-          <i className="bi bi-hourglass-split text-[#7c5af0] text-sm light-theme:text-[#6d4aff]"></i>
-        </div>
-        <div className="flex flex-col min-w-0">
-          <span className="text-[11px] text-[#666980] uppercase tracking-wider light-theme:text-[#475569]">Czas</span>
-          <span className="text-base font-bold font-mono text-[#dde0ed] leading-tight light-theme:text-[#0f172a]">
-            {estTime}
-          </span>
-        </div>
-      </div>
+      ))}
     </div>
   )
 }

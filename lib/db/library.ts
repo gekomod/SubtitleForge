@@ -140,25 +140,34 @@ export function findExisting(filename: string, targetLang: string): LibraryEntry
 export function searchLibrary(query: string, lang: string = '', limit: number = 50): LibraryEntry[] {
   try {
     const database = initDB()
-    const searchTerm = `%${query.toLowerCase()}%`
-    
+    // Normalize query the same way as titles — replace dots/dashes with spaces
+    const normalizedQuery = query
+      .replace(/[._-]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase()
+
+    // Search both normalized query AND original query for best coverage
+    const searchTermNorm = `%${normalizedQuery}%`
+    const searchTermRaw  = `%${query.toLowerCase()}%`
+
     let sql = `
       SELECT * FROM library 
-      WHERE (norm_title LIKE ? OR orig_filename LIKE ?)
+      WHERE (norm_title LIKE ? OR orig_filename LIKE ? OR norm_title LIKE ? OR orig_filename LIKE ?)
     `
-    const params: any[] = [searchTerm, searchTerm]
-    
+    const params: any[] = [searchTermNorm, searchTermNorm, searchTermRaw, searchTermRaw]
+
     if (lang) {
       sql += ` AND target_lang = ?`
       params.push(lang)
     }
-    
+
     sql += ` ORDER BY created_at DESC LIMIT ?`
     params.push(limit)
-    
+
     const stmt = database.prepare(sql)
     const rows = stmt.all(...params) as any[]
-    
+
     return rows.map(row => ({
       id: row.id,
       uuid: row.uuid,

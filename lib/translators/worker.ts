@@ -19,8 +19,11 @@ async function ensureDir() {
 function parseSRT(content: string): Array<{ id: number; text: string }> {
   if (!content) return []
   
+  // CRITICAL: normalize CRLF (Windows) and CR (old Mac) line endings
+  const normalized = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  
   const blocks: Array<{ id: number; text: string }> = []
-  const lines = content.split('\n')
+  const lines = normalized.split('\n')
   let i = 0
 
   while (i < lines.length) {
@@ -33,14 +36,16 @@ function parseSRT(content: string): Array<{ id: number; text: string }> {
       
       const textLines: string[] = []
       while (i < lines.length && lines[i]?.trim() !== '') {
-        textLines.push(lines[i])
+        textLines.push(lines[i].trim())
         i++
       }
       
-      blocks.push({
-        id,
-        text: textLines.join('\n')
-      })
+      if (textLines.length > 0) {
+        blocks.push({
+          id,
+          text: textLines.join('\n')
+        })
+      }
     }
     i++
   }
@@ -52,19 +57,20 @@ function parseSRT(content: string): Array<{ id: number; text: string }> {
 function parseASS(content: string): Array<{ id: number; text: string }> {
   if (!content) return []
   
+  const normalized = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
   const blocks: Array<{ id: number; text: string }> = []
-  const lines = content.split('\n')
+  const lines = normalized.split('\n')
   let id = 1
 
   for (const line of lines) {
     if (line?.startsWith('Dialogue:')) {
-      const parts = line.split(',', 10)
+      const parts = line.split(',')
       if (parts.length >= 10) {
-        const text = parts.slice(9).join(',').trim()
-        blocks.push({
-          id: id++,
-          text
-        })
+        // ASS has exactly 9 fixed fields before the text
+        const text = parts.slice(9).join(',').replace(/\{[^}]*\}/g, '').trim()
+        if (text) {
+          blocks.push({ id: id++, text })
+        }
       }
     }
   }
@@ -76,8 +82,9 @@ function parseASS(content: string): Array<{ id: number; text: string }> {
 function parseVTT(content: string): Array<{ id: number; text: string }> {
   if (!content) return []
   
+  const normalized = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
   const blocks: Array<{ id: number; text: string }> = []
-  const lines = content.split('\n')
+  const lines = normalized.split('\n')
   let id = 1
   let i = 0
 
@@ -89,7 +96,7 @@ function parseVTT(content: string): Array<{ id: number; text: string }> {
       
       const textLines: string[] = []
       while (i < lines.length && lines[i]?.trim() !== '' && !lines[i]?.includes('-->')) {
-        textLines.push(lines[i])
+        textLines.push(lines[i].trim())
         i++
       }
       
@@ -111,7 +118,9 @@ function parseVTT(content: string): Array<{ id: number; text: string }> {
 function generateSRT(originalBlocks: Array<{ id: number; text: string }>, translatedBlocks: Array<{ id: number; text: string }>, originalContent: string): string {
   if (!originalContent) return ''
   
-  const lines = originalContent.split('\n')
+  // Normalize CRLF
+  const content = originalContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  const lines = content.split('\n')
   const output: string[] = []
   
   // Stwórz mapę przetłumaczonych bloków
@@ -174,7 +183,8 @@ function generateSRT(originalBlocks: Array<{ id: number; text: string }>, transl
 function generateASS(originalBlocks: Array<{ id: number; text: string }>, translatedBlocks: Array<{ id: number; text: string }>, originalContent: string): string {
   if (!originalContent) return ''
   
-  const lines = originalContent.split('\n')
+  const content = originalContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  const lines = content.split('\n')
   
   const translatedMap = new Map<number, string>()
   translatedBlocks.forEach(block => {
@@ -213,7 +223,8 @@ function generateASS(originalBlocks: Array<{ id: number; text: string }>, transl
 function generateVTT(originalBlocks: Array<{ id: number; text: string }>, translatedBlocks: Array<{ id: number; text: string }>, originalContent: string): string {
   if (!originalContent) return ''
   
-  const lines = originalContent.split('\n')
+  const content = originalContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  const lines = content.split('\n')
   
   const translatedMap = new Map<number, string>()
   translatedBlocks.forEach(block => {

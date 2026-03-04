@@ -1,41 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server'
-
-// In-memory library
-let library: any[] = []
-let nextId = 1
+import { saveToLibrary } from '@/lib/db/library'
+import path from 'path'
 
 export async function POST(request: NextRequest) {
   try {
-    const { task_id, engine, source_lang, target_lang, blocks } = await request.json()
-    
-    if (!task_id) {
-      return NextResponse.json(
-        { success: false, error: 'Brak task_id' },
-        { status: 400 }
-      )
+    const { orig_filename, output_filename, engine, source_lang, target_lang, blocks } = await request.json()
+
+    if (!orig_filename && !output_filename) {
+      return NextResponse.json({ success: false, error: 'Brak nazwy pliku' }, { status: 400 })
     }
 
-    const newEntry = {
-      id: nextId++,
-      uuid: task_id,
-      orig_filename: `translated_${Date.now()}.srt`,
-      norm_title: 'translated',
-      file_path: '',
-      engine: engine || 'unknown',
-      source_lang: source_lang || 'auto',
-      target_lang: target_lang || 'pl',
-      blocks: blocks || 0,
-      created_at: Math.floor(Date.now() / 1000)
-    }
+    // Use original filename if available, else extract from output (remove UUID prefix)
+    let displayFilename = orig_filename || output_filename
+    // Strip UUID prefix: "f636f6e8-..._filename.srt" → "filename.srt"
+    const uuidMatch = displayFilename.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}_(.+)$/i)
+    if (uuidMatch) displayFilename = uuidMatch[1]
 
-    library.push(newEntry)
+    const outputDir = path.join(process.cwd(), 'translated')
+    const filePath = path.join(outputDir, output_filename || orig_filename)
 
-    return NextResponse.json({ success: true, library_id: newEntry.id })
+    const id = saveToLibrary(
+      displayFilename,
+      filePath,
+      engine || 'unknown',
+      source_lang || 'auto',
+      target_lang || 'pl',
+      blocks || 0
+    )
+
+    return NextResponse.json({ success: true, library_id: id })
   } catch (error) {
     console.error('Error saving to library:', error)
-    return NextResponse.json(
-      { success: false, error: 'Save failed' },
-      { status: 500 }
-    )
+    return NextResponse.json({ success: false, error: 'Save failed' }, { status: 500 })
   }
 }

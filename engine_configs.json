@@ -17,7 +17,7 @@
     "iconBg": "bg-purple-500/20",
     "description": "Lokalne modele AI",
     "server": "http://192.168.1.35:11434",
-    "model": "translator-pl-en:latest",
+    "model": "jnowakk11/translate-polish:latest",
     "api_key": "",
     "enabled": true,
     "popular": true

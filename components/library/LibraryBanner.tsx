@@ -1,92 +1,45 @@
 'use client'
-
 import { useState, useEffect } from 'react'
-
-interface LibraryHit {
-  id: number
-  target_lang: string
-  engine: string
-  blocks: number
-  created_at: number
-  download_url: string
-}
-
+interface Hit { id:number; target_lang:string; engine:string; blocks:number; created_at:number; download_url:string }
 export default function LibraryBanner() {
   const [show, setShow] = useState(false)
-  const [hits, setHits] = useState<LibraryHit[]>([])
-  const [singleHit, setSingleHit] = useState<LibraryHit | null>(null)
-
+  const [hits, setHits] = useState<Hit[]>([])
+  const [single, setSingle] = useState<Hit|null>(null)
   useEffect(() => {
-    const checkLibrary = async () => {
-      // This will be triggered by file upload
-      const handleLibraryCheck = (e: CustomEvent) => {
-        const { hits: newHits, single } = e.detail
-        setHits(newHits)
-        setSingleHit(single)
-        setShow(true)
-      }
-
-      window.addEventListener('library-check' as any, handleLibraryCheck)
-      return () => window.removeEventListener('library-check' as any, handleLibraryCheck as any)
-    }
-
-    checkLibrary()
+    const h = (e:any) => { const {hits:hs,single:s}=e.detail; setHits(hs); setSingle(s); setShow(true) }
+    window.addEventListener('library-check',h as any)
+    return () => window.removeEventListener('library-check',h as any)
   }, [])
-
   if (!show) return null
-
-  const date = singleHit ? new Date(singleHit.created_at * 1000).toLocaleDateString('pl-PL') : ''
-
+  const date = single ? new Date(single.created_at*1000).toLocaleDateString('pl-PL') : ''
   return (
-    <div className="lib-banner show">
-      <div className="lib-banner-icon w-13 h-13 bg-gradient-to-br from-green to-[#1aab6d] rounded-r flex items-center justify-center text-2xl flex-shrink-0">
-        🎉
+    <div className="flex items-start gap-4 bg-[var(--gdim)] border border-[rgba(43,189,126,.25)] rounded-[var(--rl)] p-4 mb-4 pop-in">
+      <div className="w-10 h-10 rounded-full bg-[var(--green)] flex items-center justify-center text-xl flex-shrink-0">🎉</div>
+      <div className="flex-1 min-w-0">
+        <h5 className="font-semibold text-sm text-[var(--green)] mb-1">
+          {hits.length>1 ? `Ten tytuł jest w bibliotece w ${hits.length} językach!` : 'Ten tytuł jest już w bibliotece!'}
+        </h5>
+        {single && <p className="text-xs text-[var(--text2)]">{single.engine} · {single.blocks} bloków · {date}</p>}
+        {hits.length>1 && (
+          <div className="flex gap-2 flex-wrap mt-2">
+            {hits.map(h=>(
+              <a key={h.id} href={h.download_url}
+                className="text-[var(--green)] border border-[rgba(43,189,126,.3)] bg-[var(--gdim)] text-xs px-3 py-1.5 rounded-lg no-underline font-semibold hover:bg-[rgba(43,189,126,.2)] transition-all">
+                <i className="bi bi-download mr-1"></i>{h.target_lang.toUpperCase()}
+              </a>
+            ))}
+          </div>
+        )}
       </div>
-      
-      <div className="flex-1 min-w-[180px]">
-        {hits.length > 1 ? (
-          <>
-            <h5 className="font-bold text-base text-green mb-1">
-              Ten tytuł jest już w bibliotece w <span className="text-green">{hits.length} językach</span>!
-            </h5>
-            <p className="text-sm text-text mb-1">
-              Silnik: {singleHit?.engine} · {singleHit?.blocks} bloków · Dodano: {date}
-            </p>
-            <div className="flex gap-2 flex-wrap mt-2">
-              {hits.map(hit => (
-                <a
-                  key={hit.id}
-                  href={hit.download_url}
-                  className="bg-[rgba(16,185,129,0.2)] border border-[#10b981] text-[#10b981] py-2 px-4 rounded-[15px] no-underline text-sm font-semibold"
-                >
-                  <i className="bi bi-download"></i> {hit.target_lang.toUpperCase()}
-                </a>
-              ))}
-            </div>
-          </>
-        ) : singleHit ? (
-          <>
-            <h5 className="font-bold text-base text-green mb-1">
-              Ten tytuł jest już w bibliotece przetłumaczonych napisów!
-            </h5>
-            <p className="text-sm text-text">
-              Język: {singleHit.target_lang.toUpperCase()} · Silnik: {singleHit.engine} · {singleHit.blocks} bloków · Dodano: {date}
-            </p>
-          </>
-        ) : null}
-      </div>
-
-      <div className="lib-banner-btns flex gap-2.5 flex-wrap ml-auto">
-        {singleHit && hits.length === 1 && (
-          <a href={singleHit.download_url} className="btn-dl py-2.5 px-5">
-            <i className="bi bi-download"></i> Pobierz gotowy
+      <div className="flex gap-2 flex-shrink-0">
+        {single && hits.length===1 && (
+          <a href={single.download_url} className="flex items-center gap-1.5 bg-[var(--green)] text-[#071a11] font-semibold text-xs px-4 py-2 rounded-xl no-underline hover:-translate-y-0.5 transition-all">
+            <i className="bi bi-download"></i>Pobierz
           </a>
         )}
-        <button
-          onClick={() => setShow(false)}
-          className="bg-transparent border border-border2 text-muted py-2.5 px-4.5 rounded-full cursor-pointer text-sm"
-        >
-          <i className="bi bi-x"></i> Tłumacz ponownie
+        <button onClick={()=>setShow(false)}
+          className="border border-[var(--border2)] text-[var(--muted)] hover:text-[var(--text2)] text-xs px-3 py-2 rounded-xl transition-all">
+          <i className="bi bi-x"></i>
         </button>
       </div>
     </div>

@@ -1,6 +1,5 @@
 'use client'
-
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslationStore } from '@/lib/store/translationStore'
 import { LANGUAGE_NAMES } from '@/lib/config/constants'
 import FileUpload from '@/components/ui/FileUpload'
@@ -14,705 +13,593 @@ import TestModal from '@/components/modals/TestModal'
 import StatsCards from '@/components/ui/StatsCards'
 import toast from 'react-hot-toast'
 
-// Domyślne konfiguracje silników
-const DEFAULT_CONFIGS = {
-  libretranslate: {
-    name: 'LibreTranslate',
-    icon: 'bi-globe',
-    iconColor: 'text-blue-400',
-    iconBg: 'bg-blue-500/20',
-    description: 'Open source, lokalny serwer',
-    server: 'http://localhost:5010',
-    api_key: '',
-    enabled: true,
-    popular: true
-  },
-  googlegtx: {
-    name: 'Google GTX',
-    icon: 'bi-google',
-    iconColor: 'text-blue-500',
-    iconBg: 'bg-blue-500/20',
-    description: 'Darmowe API Google Translate',
-    enabled: true,
-    popular: true
-  },
-  ollama: {
-    name: 'Ollama',
-    icon: 'bi-robot',
-    iconColor: 'text-purple-400',
-    iconBg: 'bg-purple-500/20',
-    description: 'Lokalne modele AI',
-    server: 'http://localhost:11434',
-    model: 'llama3.2:latest',
-    api_key: '',
-    enabled: true,
-    popular: true
-  },
-  deeplx: {
-    name: 'DeepLX',
-    icon: 'bi-translate',
-    iconColor: 'text-pink-400',
-    iconBg: 'bg-pink-500/20',
-    description: 'Darmowy proxy DeepL',
-    server: 'http://localhost:1188',
-    token: '',
-    api_key: '',
-    enabled: true,
-    popular: true
-  },
-  deepseek: {
-    name: 'DeepSeek',
-    icon: 'bi-cpu',
-    iconColor: 'text-cyan-400',
-    iconBg: 'bg-cyan-500/20',
-    description: 'Zaawansowane modele AI',
-    api_key: '',
-    model: 'deepseek-chat',
-    enabled: false
-  },
-  openai: {
-    name: 'OpenRouter',
-    icon: 'bi-diagram-3',
-    iconColor: 'text-yellow-400',
-    iconBg: 'bg-yellow-500/20',
-    description: 'OpenRouter API (Llama, GPT, Claude)',
-    api_key: '',
-    model: 'meta-llama/llama-3.2-3b-instruct:free',
-    enabled: false,
-    popular: true
-  }
-} as const
+const DEFAULT_ENGINES: Record<string,any> = {
+  libretranslate:{ name:'LibreTranslate', icon:'bi-globe',     description:'Open source, lokalny serwer', server:'http://localhost:5010', api_key:'', enabled:true, popular:true },
+  googlegtx:     { name:'Google GTX',     icon:'bi-google',    description:'Darmowe API Google Translate',                                enabled:true, popular:true },
+  ollama:        { name:'Ollama',         icon:'bi-robot',     description:'Lokalne modele AI',           server:'http://localhost:11434', model:'llama3.2:latest', api_key:'', enabled:true, popular:true },
+  deeplx:        { name:'DeepLX',         icon:'bi-translate', description:'Darmowy proxy DeepL',         server:'http://localhost:1188',  token:'', api_key:'', enabled:true, popular:true },
+  deepseek:      { name:'DeepSeek',       icon:'bi-cpu',       description:'Zaawansowane modele AI',      api_key:'', model:'deepseek-chat', enabled:false },
+  openai:        { name:'OpenRouter',     icon:'bi-diagram-3', description:'OpenRouter — Llama, GPT…',   api_key:'', model:'meta-llama/llama-3.2-3b-instruct:free', enabled:false, popular:true },
+}
 
-type EngineKey = keyof typeof DEFAULT_CONFIGS
+type EK = keyof typeof DEFAULT_ENGINES
 
+const fmt = (s:number) => `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`
+
+// ── Custom hooks ──────────────────────────────────────────────────────────
+
+function useTimer() {
+  const [elapsed, setElapsed] = useState(0)
+  const timerRef = useRef<NodeJS.Timeout|null>(null)
+  const t0Ref    = useRef<number|null>(null)
+
+  const start = useCallback(() => {
+    if (timerRef.current) clearInterval(timerRef.current)
+    t0Ref.current = Date.now(); setElapsed(0)
+    timerRef.current = setInterval(() => {
+      if (t0Ref.current) setElapsed(Math.floor((Date.now()-t0Ref.current)/1000))
+    }, 1000)
+  },[])
+
+  const stop = useCallback(() => {
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
+  },[])
+
+  const reset = useCallback(() => { stop(); setElapsed(0) },[stop])
+
+  return { elapsed, start, stop, reset }
+}
+
+function useEngines() {
+  const [engines, setEngines] = useState<Record<string,any>>(DEFAULT_ENGINES)
+  const [loaded, setLoaded]   = useState(false)
+
+  const reload = useCallback(async () => {
+    try {
+      const data = await fetch('/api/configs').then(r=>r.json())
+      const fixed = {...data}
+      Object.keys(fixed).forEach(k => { if(k in DEFAULT_ENGINES) fixed[k].icon = DEFAULT_ENGINES[k].icon })
+      setEngines(fixed); setLoaded(true)
+      return Object.keys(fixed)[0] as EK
+    } catch {
+      setLoaded(true)
+      return 'libretranslate' as EK
+    }
+  },[])
+
+  const saveConfig = useCallback(async (eng:string, cfg:any) => {
+    const data = await fetch(`/api/config/${eng}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfg)}).then(r=>r.json())
+    if (data.success) {
+      setEngines(prev => ({...prev, [eng]: {...prev[eng], ...cfg}}))
+      return true
+    }
+    return false
+  },[])
+
+  return { engines, loaded, reload, saveConfig }
+}
+
+// ── ShortcutsOverlay ──────────────────────────────────────────────────────
+function ShortcutsOverlay({ onClose }: { onClose:()=>void }) {
+  const shortcuts = [
+    ['Spacja', 'Rozpocznij tłumaczenie'],
+    ['1 / 2 / 3', 'Przełącz zakładki'],
+    ['Esc', 'Zamknij okna'],
+    ['Ctrl+R', 'Reset / nowy plik'],
+  ]
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm fade-in"
+      onClick={onClose}>
+      <div className="bg-[var(--s2)] border border-[var(--border2)] rounded-[var(--rxl)] p-6 w-80 shadow-2xl pop-in"
+        onClick={e=>e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-display text-lg text-[var(--text)] tracking-wide">SKRÓTY</h3>
+          <button onClick={onClose} className="text-[var(--muted)] hover:text-[var(--red)] transition-colors"><i className="bi bi-x text-xl"></i></button>
+        </div>
+        <div className="space-y-2">
+          {shortcuts.map(([key,desc]) => (
+            <div key={key} className="flex items-center justify-between gap-4">
+              <kbd className="font-mono text-[11px] bg-[var(--s4)] border border-[var(--border2)] text-[var(--amber)] px-2.5 py-1 rounded-lg tracking-wide flex-shrink-0">
+                {key}
+              </kbd>
+              <span className="text-xs text-[var(--text2)] text-right">{desc}</span>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 pt-4 border-t border-[var(--border)]">
+          <p className="font-mono text-[10px] text-[var(--muted)] text-center">Naciśnij ? lub Esc aby zamknąć</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Main Component ────────────────────────────────────────────────────────
 export default function TranslateTab() {
   const {
-    currentFileId,
-    currentTaskId,
-    currentFileBlocks,
-    currentOutputFilename,
-    sourceLang,
-    targetLang,
-    setCurrentFileId,
-    setCurrentTaskId,
-    setCurrentFileBlocks,
-    setCurrentOutputFilename,
-    setSourceLang,
-    setTargetLang,
-    incrementTotalTranslations,
-    reset: resetState,
+    currentFileId, currentTaskId, currentFileBlocks, currentOutputFilename,
+    sourceLang, targetLang,
+    setCurrentFileId, setCurrentTaskId, setCurrentFileBlocks, setCurrentOutputFilename,
+    setSourceLang, setTargetLang, incrementTotalTranslations, reset: resetState
   } = useTranslationStore()
 
-  const [selectedEngine, setSelectedEngine] = useState<EngineKey | null>(null)
-  const [engines, setEngines] = useState<Record<string, any>>(DEFAULT_CONFIGS)
-  const [isUploading, setIsUploading] = useState(false)
-  const [fileInfo, setFileInfo] = useState<{
-    filename: string
-    saved_filename: string
-    size: number
-    type: string
-    detectedLang?: string
-  } | null>(null)
-  const [isTranslating, setIsTranslating] = useState(false)
-  const [progress, setProgress] = useState(0)
-  const [currentBlock, setCurrentBlock] = useState(0)
-  const [elapsedSeconds, setElapsedSeconds] = useState(0)
-  const [showSuccess, setShowSuccess] = useState(false)
+  const { engines, reload: reloadEngines, saveConfig } = useEngines()
+  const { elapsed, start: startTimer, stop: stopTimer, reset: resetTimer } = useTimer()
+
+  const [engine, setEngine]         = useState<EK|null>(null)
+  const [uploading, setUploading]   = useState(false)
+  const [fileInfo, setFileInfo]     = useState<{filename:string;saved_filename:string;size:number;type:string;detectedLang?:string}|null>(null)
+  const [translating, setTranslating] = useState(false)
+  const [progress, setProgress]     = useState(0)
+  const [curBlock, setCurBlock]     = useState(0)
+  const [success, setSuccess]       = useState(false)
   const [showPreview, setShowPreview] = useState(false)
-  const [previewType, setPreviewType] = useState<'original' | 'translated' | 'sidebyside'>('original')
-  const [originalPreview, setOriginalPreview] = useState<string[]>([])
-  const [translatedPreview, setTranslatedPreview] = useState<string[]>([])
-  const [liveTranslatedBlocks, setLiveTranslatedBlocks] = useState<Map<number, string>>(new Map())
-  const [configModal, setConfigModal] = useState<{ isOpen: boolean; engine: string; config: any }>({
-    isOpen: false,
-    engine: '',
-    config: null
-  })
-  const [testModal, setTestModal] = useState<{
-    isOpen: boolean;
-    isLoading: boolean;
-    result: { success: boolean; message: string } | null;
-  }>({
-    isOpen: false,
-    isLoading: false,
-    result: null,
-  })
-  
-  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  const eventSourceRef = useRef<EventSource | null>(null)
-  const startTimeRef = useRef<number | null>(null)
+  const [pvType, setPvType]         = useState<'original'|'translated'|'sidebyside'>('original')
+  const [origPv, setOrigPv]         = useState<string[]>([])
+  const [transPv, setTransPv]       = useState<string[]>([])
+  const [livePv, setLivePv]         = useState<Map<number,string>>(new Map())
+  const [errMsg, setErrMsg]         = useState<string|null>(null)
+  const [batchSize, setBatchSize]   = useState(1)
+  const [showAdv, setShowAdv]       = useState(false)
+  const [showShortcuts, setShowShortcuts] = useState(false)
+  const [cfgModal, setCfgModal]     = useState<{open:boolean;engine:string;config:any}>({open:false,engine:'',config:null})
+  const [testModal, setTestModal]   = useState<{open:boolean;loading:boolean;result:any}>({open:false,loading:false,result:null})
+  const [recentEngines, setRecentEngines] = useState<string[]>([])
 
+  const esRef = useRef<EventSource|null>(null)
+
+  // Init
   useEffect(() => {
-    loadConfigs()
-    
-    return () => {
-      if (timerIntervalRef.current) {
-        clearInterval(timerIntervalRef.current)
-      }
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close()
-      }
-    }
-  }, [])
+    reloadEngines().then(first => { if(!engine) setEngine(first) })
+    try { setRecentEngines(JSON.parse(localStorage.getItem('recentEngines')||'[]')) } catch {}
+    return () => { esRef.current?.close() }
+  },[])
 
-  const loadConfigs = async () => {
-    try {
-      const response = await fetch('/api/configs')
-      const data = await response.json()
-      
-      // Wymuś ikony z DEFAULT_CONFIGS
-      const fixedData = { ...data }
-      Object.keys(fixedData).forEach(key => {
-        // Sprawdź czy klucz istnieje w DEFAULT_CONFIGS
-        if (key in DEFAULT_CONFIGS) {
-          const defaultKey = key as EngineKey
-          fixedData[key].icon = DEFAULT_CONFIGS[defaultKey].icon
-          fixedData[key].iconColor = DEFAULT_CONFIGS[defaultKey].iconColor
-          fixedData[key].iconBg = DEFAULT_CONFIGS[defaultKey].iconBg
-        }
-      })
-      
-      setEngines(fixedData)
-      
-      if (!selectedEngine && Object.keys(fixedData).length > 0) {
-        setSelectedEngine(Object.keys(fixedData)[0] as EngineKey)
-      }
-    } catch (error) {
-      console.error('Failed to load configs:', error)
-      setEngines(DEFAULT_CONFIGS)
-      if (!selectedEngine && Object.keys(DEFAULT_CONFIGS).length > 0) {
-        setSelectedEngine(Object.keys(DEFAULT_CONFIGS)[0] as EngineKey)
-      }
+  // Keyboard shortcuts
+  useEffect(() => {
+    const h = (e:KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName
+      if (['INPUT','SELECT','TEXTAREA'].includes(tag)) return
+      if (e.key === '?' || e.key === '/') { setShowShortcuts(v=>!v); return }
+      if (e.key === 'Escape') { setShowShortcuts(false); return }
+      if (e.code === 'Space' && currentFileId && engine && !translating) { e.preventDefault(); startTranslation() }
+      if ((e.ctrlKey||e.metaKey) && e.key==='r') { e.preventDefault(); if(!translating) resetAll() }
     }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  })
+
+  // Scroll wheel on batch size
+  const batchWheelRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = batchWheelRef.current
+    if (!el) return
+    const handler = (e:WheelEvent) => {
+      e.preventDefault()
+      setBatchSize(v => Math.max(1, Math.min(10, v + (e.deltaY < 0 ? 1 : -1))))
+    }
+    el.addEventListener('wheel', handler, { passive: false })
+    return () => el.removeEventListener('wheel', handler)
+  },[])
+
+  const trackEngine = (eng:string) => {
+    const updated = [eng, ...recentEngines.filter(e=>e!==eng)].slice(0,3)
+    setRecentEngines(updated)
+    try { localStorage.setItem('recentEngines', JSON.stringify(updated)) } catch {}
   }
 
-  const handleUpload = async (file: File) => {
-    setIsUploading(true)
-    const formData = new FormData()
-    formData.append('file', file)
-
+  const handleUpload = async (file:File) => {
+    setUploading(true); setErrMsg(null)
+    const fd = new FormData(); fd.append('file', file)
     try {
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      })
-      const data = await response.json()
-
+      const data = await fetch('/api/upload',{method:'POST',body:fd}).then(r=>r.json())
       if (data.success) {
-        console.log('Upload response:', data)
-        
-        setCurrentFileId(data.file_id)
-        setCurrentFileBlocks(data.blocks || 0)
-        setFileInfo({
-          filename: data.filename,
-          saved_filename: data.saved_filename,
-          size: data.size,
-          type: data.file_type,
-          detectedLang: data.detected_lang,
-        })
-        setShowPreview(true)
-        setLiveTranslatedBlocks(new Map())
-
+        setCurrentFileId(data.file_id); setCurrentFileBlocks(data.blocks||0)
+        setFileInfo({ filename:data.filename, saved_filename:data.saved_filename, size:data.size, type:data.file_type, detectedLang:data.detected_lang })
+        setShowPreview(true); setLivePv(new Map())
         await loadPreview(data.file_id)
-
-        if (data.detected_lang) {
-          setSourceLang(data.detected_lang)
-        }
-        
-        if (data.library_hits?.length) {
-          showLibraryHint(data.library_hits)
-        }
-        
-        toast.success(`Plik załadowany: ${data.blocks} bloków, wykryty język: ${LANGUAGE_NAMES[data.detected_lang] || data.detected_lang}`)
-      } else {
-        toast.error(data.error || 'Upload failed')
-      }
-    } catch (error) {
-      console.error('Upload error:', error)
-      toast.error('Upload failed')
-    } finally {
-      setIsUploading(false)
-    }
+        if (data.detected_lang) setSourceLang(data.detected_lang)
+        toast.success(`${(data.blocks||0).toLocaleString()} bloków · ${LANGUAGE_NAMES[data.detected_lang]||data.detected_lang||'?'}`, {icon:'🎬'})
+      } else toast.error(data.error||'Upload failed')
+    } catch { toast.error('Błąd połączenia') }
+    finally { setUploading(false) }
   }
 
-  const loadPreview = async (fileId: string) => {
+  const loadPreview = async (fileId:string) => {
     try {
-      const response = await fetch(`/api/preview/${fileId}`)
-      const data = await response.json()
-      if (data.success && data.preview) {
-        setOriginalPreview(data.preview)
-      }
-    } catch (error) {
-      console.error('Error loading preview:', error)
-    }
+      const data = await fetch(`/api/preview/${fileId}`).then(r=>r.json())
+      if (data.success) setOrigPv(data.preview||[])
+    } catch {}
   }
 
-  const loadTranslatedPreview = async (taskId: string) => {
+  const loadTranslatedPreview = async (taskId:string) => {
     try {
-      const response = await fetch(`/api/preview/translated/${taskId}`)
-      const data = await response.json()
-      if (data.success && data.preview) {
-        setTranslatedPreview(data.preview)
-        setPreviewType('sidebyside')
-      }
-    } catch (error) {
-      console.error('Error loading translated preview:', error)
-    }
-  }
-
-  const showLibraryHint = (hits: any[]) => {
-    const event = new CustomEvent('library-check', { detail: { hits, single: hits[0] } })
-    window.dispatchEvent(event)
-  }
-
-  const startTimer = () => {
-    if (timerIntervalRef.current) {
-      clearInterval(timerIntervalRef.current)
-    }
-    
-    startTimeRef.current = Date.now()
-    setElapsedSeconds(0)
-    
-    timerIntervalRef.current = setInterval(() => {
-      if (startTimeRef.current) {
-        const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000)
-        setElapsedSeconds(elapsed)
-      }
-    }, 1000)
-  }
-
-  const stopTimer = () => {
-    if (timerIntervalRef.current) {
-      clearInterval(timerIntervalRef.current)
-      timerIntervalRef.current = null
-    }
-    startTimeRef.current = null
-  }
-
-  const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+      const data = await fetch(`/api/preview/translated/${taskId}`).then(r=>r.json())
+      if (data.success && data.preview?.length) { setTransPv(data.preview); setPvType('sidebyside') }
+    } catch {}
   }
 
   const startTranslation = async () => {
-  if (!currentFileId) {
-    toast.error('Najpierw wgraj plik')
-    return
-  }
-  if (!selectedEngine) {
-    toast.error('Wybierz silnik AI')
-    return
-  }
-  const config = engines[selectedEngine]
-  if (!config.enabled) {
-    toast.error('Wybrany silnik jest wyłączony')
-    return
-  }
+    if (!currentFileId || !engine) return
+    const cfg = engines[engine]
+    if (!cfg?.enabled) { toast.error('Silnik wyłączony — skonfiguruj w ustawieniach'); return }
+    if (!fileInfo?.saved_filename) { toast.error('Brak informacji o pliku'); return }
 
-  if (!fileInfo || !fileInfo.saved_filename) {
-    toast.error('Brak informacji o pliku - wgraj plik ponownie')
-    return
-  }
+    trackEngine(engine)
+    setTranslating(true); setSuccess(false); setProgress(0); setCurBlock(0)
+    setErrMsg(null); setLivePv(new Map()); startTimer()
 
-  const payload = {
-    source_lang: sourceLang,
-    target_lang: targetLang,
-    engine: selectedEngine,
-    file_id: currentFileId,
-    saved_filename: fileInfo.saved_filename,
-    ...config,
+    try {
+      const payload = { source_lang:sourceLang, target_lang:targetLang, engine, file_id:currentFileId, saved_filename:fileInfo.saved_filename, batch_size:batchSize, ...cfg }
+      const data = await fetch('/api/translate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}).then(r=>r.json())
+      if (data.success) {
+        setCurrentTaskId(data.task_id); setCurrentOutputFilename(data.output_filename)
+        if (data.total_blocks) setCurrentFileBlocks(data.total_blocks)
+        listenProgress(data.task_id, data.output_filename)  // pass directly, don't rely on state
+        toast.success('Tłumaczenie rozpoczęte 🚀')
+      } else { toast.error(data.error||'Błąd'); resetXl() }
+    } catch { toast.error('Błąd połączenia'); resetXl() }
   }
 
-  setIsTranslating(true)
-  setShowSuccess(false)
-  setProgress(0)
-  setCurrentBlock(0)
-  setLiveTranslatedBlocks(new Map())
-  startTimer()
-
-  try {
-    const response = await fetch('/api/translate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-    
-    const data = await response.json()
-
-    if (data.success) {
-      console.log('Translation started:', data)
-      setCurrentTaskId(data.task_id)
-      setCurrentOutputFilename(data.output_filename)
-      
-      // Ustaw prawidłową liczbę bloków z odpowiedzi API
-      if (data.total_blocks) {
-        setCurrentFileBlocks(data.total_blocks)
-      }
-      
-      startProgress(data.task_id)
-      toast.success('Tłumaczenie rozpoczęte')
-    } else {
-      toast.error(data.error || 'Nie udało się rozpocząć tłumaczenia')
-      resetTranslation()
-    }
-  } catch (error) {
-    console.error('Translation error:', error)
-    toast.error('Błąd połączenia z serwerem')
-    resetTranslation()
-  }
-}
-
-  const startProgress = (taskId: string) => {
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close()
-    }
-    
+  const listenProgress = (taskId:string, outputFilename:string) => {
+    if (esRef.current) esRef.current.close()
     const es = new EventSource(`/api/progress/${taskId}`)
-    eventSourceRef.current = es
-
-    es.onopen = () => {
-      console.log('EventSource connected')
-    }
+    esRef.current = es
+    let retries = 0
 
     es.onmessage = (e) => {
       try {
-        const data = JSON.parse(e.data)
-
-        if (data.error) {
-          toast.error(data.error)
-          resetTranslation()
-          return
+        const d = JSON.parse(e.data)
+        retries = 0
+        if (d.error) { toast.error(d.error); resetXl(); return }
+        if (d.progress !== undefined) setProgress(d.progress)
+        if (d.current !== undefined) setCurBlock(d.current)
+        if (d.total > 0) setCurrentFileBlocks(d.total)
+        if (d.block_id !== undefined && d.translated_text) {
+          setLivePv(prev => { const m=new Map(prev); m.set(d.block_id, d.translated_text); return m })
         }
-
-        if (data.progress !== undefined) {
-          setProgress(data.progress)
+        if (d.completed) {
+          es.close(); esRef.current = null
+          incrementTotalTranslations(); stopTimer()
+          setTimeout(async () => {
+            setTranslating(false); setSuccess(true)
+            await loadTranslatedPreview(taskId)
+            // Pass outputFilename directly — don't rely on React state closure
+            addHistory(outputFilename)
+            toast.success('Gotowe! 🎬',{duration:4000})
+          }, 400)
         }
-        if (data.current !== undefined) {
-          setCurrentBlock(data.current)
-        }
-        if (data.total !== undefined && data.total > 0) {
-          setCurrentFileBlocks(data.total)
-        }
-
-        if (data.block_id !== undefined && data.translated_text !== undefined) {
-          setLiveTranslatedBlocks(prev => {
-            const newMap = new Map(prev)
-            newMap.set(data.block_id, data.translated_text)
-            return newMap
-          })
-        }
-        
-        if (data.completed) {
-          es.close()
-          eventSourceRef.current = null
-          incrementTotalTranslations()
-          stopTimer()
-          
-          setTimeout(() => {
-            setIsTranslating(false)
-            setShowSuccess(true)
-            loadTranslatedPreview(taskId)
-            addToHistory()
-            toast.success('Tłumaczenie zakończone!')
-          }, 500)
-        }
-      } catch (error) {
-        console.error('Error parsing progress message:', error)
-      }
+      } catch {}
     }
-
-    es.onerror = (err) => {
-      console.error('EventSource error:', err)
-      if (es.readyState === EventSource.CLOSED) {
-        toast.error('Połączenie z serwerem zostało przerwane')
-        resetTranslation()
-      }
+    es.onerror = () => {
+      retries++
+      if (retries > 3) { toast.error('Połączenie SSE przerwane'); resetXl() }
     }
   }
 
-  const getLivePreviewData = () => {
-    if (previewType === 'original') {
-      return originalPreview
-    } else if (previewType === 'translated') {
-      const translated = Array(originalPreview.length).fill('')
-      liveTranslatedBlocks.forEach((text, id) => {
-        if (id <= originalPreview.length) {
-          translated[id - 1] = text
-        }
-      })
-      return translated
-    } else {
-      return originalPreview
-    }
+  const resetXl = () => {
+    setTranslating(false); setProgress(0); setCurBlock(0); resetTimer(); setLivePv(new Map())
+    if (esRef.current) { esRef.current.close(); esRef.current = null }
   }
 
-  const resetTranslation = () => {
-    setIsTranslating(false)
-    setShowSuccess(false)
-    setProgress(0)
-    setCurrentBlock(0)
-    stopTimer()
-    setElapsedSeconds(0)
-    setLiveTranslatedBlocks(new Map())
-    
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close()
-      eventSourceRef.current = null
-    }
+  const resetAll = () => {
+    resetXl(); resetState(); setFileInfo(null); setShowPreview(false); setSuccess(false)
+    setOrigPv([]); setTransPv([]); setLivePv(new Map()); setErrMsg(null)
   }
 
-  const resetToUpload = () => {
-    resetTranslation()
-    resetState()
-    setFileInfo(null)
-    setShowPreview(false)
-    setShowSuccess(false)
-    setOriginalPreview([])
-    setTranslatedPreview([])
-    setLiveTranslatedBlocks(new Map())
-    setElapsedSeconds(0)
-  }
-
-  const addToHistory = () => {
-    const history = JSON.parse(localStorage.getItem('translationHistory') || '[]')
-    history.push({
-      filename: currentOutputFilename,
-      engine: selectedEngine,
-      sourceLang,
-      targetLang,
-      blocks: currentFileBlocks,
-      date: new Date().toISOString(),
-      downloadUrl: `/download/${currentOutputFilename}`,
-    })
-    if (history.length > 20) history.shift()
-    localStorage.setItem('translationHistory', JSON.stringify(history))
-  }
-
-  const handleOpenConfig = (engine: string) => {
-    setConfigModal({ 
-      isOpen: true, 
-      engine, 
-      config: engines[engine] 
-    })
-  }
-
-  const handleSaveConfig = async (engine: string, config: any) => {
+  const addHistory = (outputFilename: string) => {
+    // Save to localStorage history
     try {
-      const response = await fetch(`/api/config/${engine}`, {
+      const h = JSON.parse(localStorage.getItem('translationHistory')||'[]')
+      const originalFilename = fileInfo?.filename || outputFilename || 'unknown'
+      h.unshift({
+        filename: outputFilename,
+        originalFilename,
+        engine, sourceLang, targetLang,
+        blocks: currentFileBlocks,
+        date: new Date().toISOString(),
+        downloadUrl: `/download/${encodeURIComponent(outputFilename)}`,
+      })
+      if(h.length>20) h.pop()
+      localStorage.setItem('translationHistory', JSON.stringify(h))
+    } catch {}
+
+    // Save to SQLite library (for local search)
+    try {
+      fetch('/api/library/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config),
-      })
-      const data = await response.json()
-      if (data.success) {
-        setEngines(prev => ({
-          ...prev,
-          [engine]: { ...prev[engine], ...config },
-        }))
-        setConfigModal({ isOpen: false, engine: '', config: null })
-        toast.success('Configuration saved')
-      } else {
-        toast.error('Failed to save configuration')
-      }
-    } catch (error) {
-      toast.error('Failed to save configuration')
-    }
+        body: JSON.stringify({
+          orig_filename: fileInfo?.filename || outputFilename,
+          output_filename: outputFilename,
+          engine,
+          source_lang: sourceLang,
+          target_lang: targetLang,
+          blocks: currentFileBlocks,
+        }),
+      }).catch(() => {}) // fire-and-forget
+    } catch {}
   }
 
-  const handleTestEngine = async (engine: string, config: any) => {
-    setTestModal({ isOpen: true, isLoading: true, result: null })
+  const handleSaveConfig = async (eng:string, cfg:any) => {
+    const ok = await saveConfig(eng, cfg)
+    if (ok) { setCfgModal({open:false,engine:'',config:null}); toast.success('Konfiguracja zapisana') }
+    else toast.error('Błąd zapisu')
+  }
 
+  const handleTestEngine = async (eng:string, cfg:any) => {
+    setTestModal({open:true,loading:true,result:null})
     try {
-      const response = await fetch('/api/test-connection', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ engine, ...config }),
-      })
-      const data = await response.json()
-      setTestModal({ isOpen: true, isLoading: false, result: data })
-    } catch (error: any) {
-      setTestModal({
-        isOpen: true,
-        isLoading: false,
-        result: { success: false, message: error.message },
-      })
-    }
+      const data = await fetch('/api/test-connection',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({engine:eng,...cfg})}).then(r=>r.json())
+      setTestModal({open:true,loading:false,result:data})
+    } catch(err:any) { setTestModal({open:true,loading:false,result:{success:false,message:err.message}}) }
   }
 
-  const getElapsedTimeString = () => {
-    return formatTime(elapsedSeconds)
-  }
-
-  const estimatedChars = currentFileBlocks * 50
-  const estimatedTime = currentFileBlocks * 0.5
-  const estimatedTimeString = estimatedTime < 60
-    ? `~${Math.round(estimatedTime)}s`
-    : `~${Math.floor(estimatedTime / 60)}m ${Math.round(estimatedTime % 60)}s`
-
-  const livePreviewData = getLivePreviewData()
-  const liveTranslatedData = Array(originalPreview.length).fill('')
-  liveTranslatedBlocks.forEach((text, id) => {
-    if (id <= originalPreview.length) {
-      liveTranslatedData[id - 1] = text
-    }
-  })
+  const liveArr     = origPv.map((_,i) => livePv.get(i+1)||'')
+  const canTranslate = !!currentFileId && !!engine && !translating
+  const estTime = currentFileBlocks > 0
+    ? currentFileBlocks*.5 < 60 ? `~${Math.round(currentFileBlocks*.5)}s` : `~${Math.floor(currentFileBlocks*.5/60)}m`
+    : '—'
+  const liveCount = livePv.size
 
   return (
-    <div className="bg-[#0e1016] border border-[rgba(255,255,255,0.07)] rounded-[28px] p-7">
-      {isTranslating && (
-        <div className="mb-6">
-          <ProgressBar
-            progress={progress}
-            current={currentBlock}
-            total={currentFileBlocks}
-            elapsedTime={getElapsedTimeString()}
-          />
-        </div>
-      )}
+    <>
+      {showShortcuts && <ShortcutsOverlay onClose={()=>setShowShortcuts(false)} />}
 
-      {showSuccess && currentOutputFilename && (
-        <div className="mb-6">
-          <SuccessCard
-            blocks={currentFileBlocks}
-            elapsedTime={getElapsedTimeString()}
-            downloadUrl={`/download/${encodeURIComponent(currentOutputFilename || '')}`}
-            onReset={resetToUpload}
-          />
-        </div>
-      )}
+      <div className="bg-[var(--s1)] border border-[var(--border)] rounded-[var(--rxl)] overflow-hidden fade-in">
+        {/* Accent top line */}
+        <div className="h-px bg-gradient-to-r from-transparent via-[var(--amber)] to-transparent opacity-25"></div>
 
-      <div className="err-alert hidden" id="errorAlert">
-        <i className="bi bi-exclamation-triangle-fill"></i>
-        <span></span>
-      </div>
+        <div className="p-4 sm:p-5">
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6">
-        <div className="space-y-4">
-          <FileUpload onUpload={handleUpload} isUploading={isUploading} />
-
-          {fileInfo && (
-            <div className="bg-[#13151f] border border-[rgba(255,255,255,0.07)] rounded-[20px] overflow-hidden">
-              <div className="p-4 flex items-center justify-between gap-3 border-b border-[rgba(255,255,255,0.07)]">
-                <div className="flex items-center gap-3.5 min-w-0">
-                  <div className="w-11 h-11 flex-shrink-0 bg-gradient-to-r from-[#7c5af0] to-[#9d7ef5] rounded-[14px] flex items-center justify-center text-white text-xl">
-                    <i className="bi bi-file-earmark-text"></i>
+          {/* ── Progress ── */}
+          {translating && (
+            <div className="mb-4 space-y-2">
+              <ProgressBar progress={progress} current={curBlock} total={currentFileBlocks} elapsedTime={fmt(elapsed)} engine={engine||undefined} />
+              {/* Live counter */}
+              {liveCount > 0 && (
+                <div className="flex items-center gap-2 px-1 fade-in">
+                  <div className="flex items-center gap-1.5">
+                    {[0,1,2].map(i=><div key={i} className="w-1 h-3 bg-[var(--amber)] rounded-full wave-bar" style={{animationDelay:`${i*0.15}s`}}/>)}
                   </div>
-                  <div className="min-w-0">
-                    <div className="font-semibold text-sm text-[#dde0ed] truncate" title={fileInfo.filename}>
-                      {fileInfo.filename}
+                  <span className="font-mono text-[11px] text-[var(--muted)]">
+                    <span className="text-[var(--amber)] font-semibold">{liveCount}</span> bloków przetłumaczonych na żywo
+                  </span>
+                </div>
+              )}
+              <button onClick={resetXl}
+                className="w-full py-2 text-xs font-mono text-[var(--muted)] hover:text-[var(--red)] border border-[var(--border)] hover:border-[rgba(255,77,94,.25)] rounded-xl transition-all duration-200">
+                <i className="bi bi-x-circle mr-1.5"></i>Anuluj tłumaczenie
+              </button>
+            </div>
+          )}
+
+          {/* ── Success ── */}
+          {success && currentOutputFilename && (
+            <div className="mb-4">
+              <SuccessCard blocks={currentFileBlocks} elapsedTime={fmt(elapsed)} downloadUrl={`/download/${encodeURIComponent(currentOutputFilename)}`} onReset={resetAll} />
+            </div>
+          )}
+
+          {/* ── Error ── */}
+          {errMsg && (
+            <div className="mb-4 flex items-start gap-3 bg-[var(--rdim)] border border-[rgba(255,77,94,.22)] rounded-[var(--rl)] p-3.5 slide-in">
+              <i className="bi bi-exclamation-triangle text-[var(--red)] flex-shrink-0 mt-0.5"></i>
+              <span className="text-xs text-[var(--text2)] flex-1 font-mono">{errMsg}</span>
+              <button onClick={()=>setErrMsg(null)} className="text-[var(--muted)] hover:text-[var(--red)] flex-shrink-0">
+                <i className="bi bi-x"></i>
+              </button>
+            </div>
+          )}
+
+          {/* ── Main grid ── */}
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4">
+
+            {/* LEFT */}
+            <div className="flex flex-col gap-3">
+
+              {/* File upload / info */}
+              {!fileInfo ? (
+                <FileUpload onUpload={handleUpload} isUploading={uploading} />
+              ) : (
+                <div className="bg-[var(--s2)] border border-[var(--border)] rounded-[var(--rl)] overflow-hidden slide-up">
+                  {/* File header */}
+                  <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--border)]">
+                    <div className="relative flex-shrink-0">
+                      <div className="w-10 h-10 rounded-[11px] flex items-center justify-center text-sm bg-[var(--adim)] text-[var(--amber)] border border-[var(--adim2)]">
+                        <i className="bi bi-file-earmark-text"></i>
+                      </div>
+                      {/* Format badge */}
+                      <span className="absolute -bottom-1 -right-1 font-mono text-[8px] font-bold px-1 py-0.5 rounded border"
+                        style={{background:'var(--s4)',borderColor:'var(--border2)',color:'var(--text2)'}}>
+                        {fileInfo.type}
+                      </span>
                     </div>
-                    <div className="text-[11px] text-[#666980] font-mono mt-0.5">
-                      {(fileInfo.size / 1024).toFixed(1)} KB · {currentFileBlocks} blocks · {fileInfo.type}
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold text-[var(--text)] truncate" title={fileInfo.filename}>
+                        {fileInfo.filename}
+                      </div>
+                      <div className="font-mono text-[10px] text-[var(--muted)] mt-0.5 flex items-center gap-2 flex-wrap">
+                        <span>{(fileInfo.size/1024).toFixed(1)} KB</span>
+                        <span className="text-[var(--border2)]">·</span>
+                        <span>{currentFileBlocks.toLocaleString()} bloków</span>
+                        {fileInfo.detectedLang && <>
+                          <span className="text-[var(--border2)]">·</span>
+                          <span className="text-[var(--amber)]">{LANGUAGE_NAMES[fileInfo.detectedLang]||fileInfo.detectedLang}</span>
+                        </>}
+                      </div>
                     </div>
+                    <button onClick={resetAll}
+                      className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--muted)] hover:text-[var(--red)] hover:bg-[var(--rdim)] border border-[var(--border)] transition-all text-xs flex-shrink-0"
+                      title="Usuń plik">
+                      <i className="bi bi-x"></i>
+                    </button>
+                  </div>
+                  {/* Stats */}
+                  <div className="p-3 bg-[var(--s3)]">
+                    <StatsCards blocks={currentFileBlocks} chars={currentFileBlocks*52} estTime={estTime} />
                   </div>
                 </div>
-                {fileInfo.detectedLang && (
-                  <div className="bg-[rgba(124,90,240,0.14)] border border-[rgba(124,90,240,0.35)] py-1.5 px-3.5 rounded-full text-xs font-semibold text-[#9d7ef5] whitespace-nowrap flex-shrink-0">
-                    <i className="bi bi-translate mr-1"></i>
-                    {LANGUAGE_NAMES[fileInfo.detectedLang] || fileInfo.detectedLang}
+              )}
+
+              {/* Recent engines hint */}
+              {recentEngines.length > 0 && !translating && (
+                <div className="flex items-center gap-2 fade-in">
+                  <span className="font-mono text-[9px] text-[var(--muted)] uppercase tracking-widest flex-shrink-0">Ostatnio:</span>
+                  {recentEngines.map(eng => (
+                    <button key={eng} onClick={() => setEngine(eng as EK)}
+                      className={`font-mono text-[10px] px-2 py-0.5 rounded-full border transition-all flex-shrink-0
+                        ${engine===eng
+                          ? 'text-[var(--amber)] border-[rgba(240,165,0,.35)] bg-[var(--adim)]'
+                          : 'text-[var(--muted)] border-[var(--border)] hover:border-[var(--border2)] hover:text-[var(--text2)]'}`}>
+                      {engines[eng]?.name || eng}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <EngineSelector engines={engines} selectedEngine={engine} onSelect={e=>setEngine(e as EK)} onOpenConfig={e=>setCfgModal({open:true,engine:e,config:engines[e]})} />
+              <LanguageSelector sourceLang={sourceLang} targetLang={targetLang} onSourceChange={setSourceLang} onTargetChange={setTargetLang} detectedLang={fileInfo?.detectedLang} />
+
+              {/* Advanced */}
+              <div className="bg-[var(--s2)] border border-[var(--border)] rounded-[var(--rl)] overflow-hidden">
+                <button onClick={()=>setShowAdv(!showAdv)}
+                  className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-mono text-[var(--muted)] hover:text-[var(--text2)] transition-colors">
+                  <span className="flex items-center gap-2">
+                    <i className="bi bi-sliders text-[var(--amber)]"></i>
+                    Opcje zaawansowane
+                  </span>
+                  <i className={`bi bi-chevron-${showAdv?'up':'down'} text-xs transition-transform`}></i>
+                </button>
+
+                {showAdv && (
+                  <div className="px-4 pb-4 border-t border-[var(--border)] pt-3 fade-in">
+                    {/* Batch size — scroll wheel supported */}
+                    <div ref={batchWheelRef}>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-xs text-[var(--text2)] font-medium flex items-center gap-1.5">
+                          <i className="bi bi-collection text-[var(--amber)]"></i>
+                          Batch size
+                          <span className="font-mono text-[9px] text-[var(--muted)] border border-[var(--border)] px-1.5 py-0.5 rounded ml-1">
+                            scroll kółkiem
+                          </span>
+                        </label>
+                        <div className="flex items-center gap-1.5">
+                          <button onClick={()=>setBatchSize(v=>Math.max(1,v-1))}
+                            className="w-5 h-5 rounded flex items-center justify-center text-[var(--muted)] hover:text-[var(--text)] bg-[var(--s3)] border border-[var(--border)] text-xs transition-all">
+                            −
+                          </button>
+                          <span className="font-mono text-base font-bold text-[var(--amber)] w-4 text-center">{batchSize}</span>
+                          <button onClick={()=>setBatchSize(v=>Math.min(10,v+1))}
+                            className="w-5 h-5 rounded flex items-center justify-center text-[var(--muted)] hover:text-[var(--text)] bg-[var(--s3)] border border-[var(--border)] text-xs transition-all">
+                            +
+                          </button>
+                        </div>
+                      </div>
+                      <input type="range" min={1} max={10} value={batchSize}
+                        onChange={e=>setBatchSize(Number(e.target.value))}
+                        className="w-full h-1 appearance-none rounded-full cursor-pointer p-0 border-0"
+                        style={{ accentColor:'var(--amber)', background:`linear-gradient(to right,var(--amber) ${(batchSize-1)/9*100}%,var(--s5) ${(batchSize-1)/9*100}%)` }} />
+                      <div className="flex justify-between font-mono text-[9px] text-[var(--muted)] mt-1">
+                        <span>1 — bezpieczny</span>
+                        <span className="text-center text-[var(--amber)]">
+                          {batchSize <= 2 ? 'Ollama: zalecane' : batchSize <= 5 ? 'Optymalne API' : 'Ryzyko: mieszanie linii'}
+                        </span>
+                        <span>10 — szybki</span>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
-              
-              <div className="p-4 bg-[#0e1016]/50">
-                <StatsCards
-                  blocks={currentFileBlocks}
-                  chars={estimatedChars}
-                  estTime={estimatedTimeString}
-                />
+
+              {/* ── Translate button ── */}
+              <button onClick={startTranslation} disabled={!canTranslate}
+                className={`w-full relative overflow-hidden rounded-[var(--rl)] py-4 font-bold text-sm flex items-center justify-center gap-2.5 transition-all duration-200
+                  ${canTranslate
+                    ? 'text-[#0f0800] hover:-translate-y-0.5'
+                    : 'bg-[var(--s3)] text-[var(--muted)] cursor-not-allowed border border-[var(--border)]'}`}
+                style={canTranslate ? {
+                  background: 'var(--amber)',
+                  boxShadow: '0 8px 28px -8px rgba(240,165,0,0.6), inset 0 1px 0 rgba(255,255,255,0.2)'
+                } : {}}>
+
+                {/* Sheen animation on hover */}
+                {canTranslate && (
+                  <div className="absolute inset-0 opacity-0 hover:opacity-100 transition-opacity"
+                    style={{background:'linear-gradient(90deg,transparent,rgba(255,255,255,0.15),transparent)'}}></div>
+                )}
+
+                <i className={`bi ${translating?'bi-hourglass-split':'bi-play-fill'} relative z-10`}></i>
+                <span className="relative z-10 tracking-wide">
+                  {translating ? 'Tłumaczenie…' : 'Tłumacz'}
+                </span>
+                {canTranslate && (
+                  <kbd className="relative z-10 font-mono text-[10px] opacity-50 border border-[rgba(0,0,0,.25)] px-1.5 py-0.5 rounded">
+                    SPACJA
+                  </kbd>
+                )}
+              </button>
+
+              {/* Shortcuts hint */}
+              <div className="flex items-center justify-between px-1">
+                <button onClick={()=>setShowShortcuts(true)}
+                  className="flex items-center gap-1.5 font-mono text-[10px] text-[var(--muted)] hover:text-[var(--text2)] transition-colors">
+                  <kbd className="border border-[var(--border)] px-1.5 rounded text-[9px]">?</kbd>
+                  <span>Skróty klawiszowe</span>
+                </button>
+                {!translating && currentFileId && (
+                  <button onClick={resetAll}
+                    className="font-mono text-[10px] text-[var(--muted)] hover:text-[var(--red)] transition-colors flex items-center gap-1">
+                    <i className="bi bi-arrow-counterclockwise text-xs"></i>Reset
+                  </button>
+                )}
               </div>
             </div>
-          )}
 
-          <EngineSelector
-            engines={engines}
-            selectedEngine={selectedEngine}
-            onSelect={(engine) => setSelectedEngine(engine as EngineKey)}
-            onOpenConfig={handleOpenConfig}
-          />
+            {/* RIGHT */}
+            <div className="flex flex-col gap-3">
+              {showPreview && (
+                <PreviewPanel
+                  previewData={origPv} type={pvType}
+                  originalData={origPv} translatedData={translating ? liveArr : transPv}
+                  onTypeChange={setPvType} showToggle={transPv.length>0||livePv.size>0} isLive={translating} />
+              )}
 
-          <LanguageSelector
-            sourceLang={sourceLang}
-            targetLang={targetLang}
-            onSourceChange={setSourceLang}
-            onTargetChange={setTargetLang}
-            detectedLang={fileInfo?.detectedLang}
-          />
-
-          <button
-            className="w-full bg-gradient-to-r from-[#7c5af0] to-[#9d7ef5] text-white border-none py-4 rounded-[20px] font-bold text-base flex items-center justify-center gap-2.5 cursor-pointer transition-all duration-200 shadow-[0_10px_28px_-8px_rgba(124,90,240,0.55),inset_0_1px_0_rgba(255,255,255,0.15)] disabled:opacity-30 disabled:cursor-not-allowed hover:-translate-y-0.5 hover:shadow-[0_16px_36px_-8px_rgba(124,90,240,0.7),inset_0_1px_0_rgba(255,255,255,0.2)]"
-            onClick={startTranslation}
-            disabled={!currentFileId || !selectedEngine || isTranslating}
-          >
-            <i className="bi bi-play-fill"></i>
-            Tłumacz
-            <i className="bi bi-arrow-right"></i>
-          </button>
-        </div>
-
-        <div className="space-y-4">
-          {showPreview && (
-            <PreviewPanel
-              previewData={livePreviewData}
-              type={previewType}
-              originalData={originalPreview}
-              translatedData={isTranslating ? liveTranslatedData : translatedPreview}
-              onTypeChange={setPreviewType}
-              showToggle={translatedPreview.length > 0 || liveTranslatedBlocks.size > 0}
-              isLive={isTranslating}
-            />
-          )}
-
-          <div className="bg-[#13151f] border border-[rgba(255,255,255,0.07)] rounded-[20px] p-5">
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="font-semibold text-sm text-[#dde0ed] flex items-center gap-2">
-                <i className="bi bi-lightbulb text-[#e8a93a]"></i>
-                Wskazówki
-              </h4>
-              <i className="bi bi-stars text-[#e8a93a]"></i>
-            </div>
-            <div className="bg-[#07080d] border border-[rgba(255,255,255,0.07)] rounded-[14px] p-4 max-h-48 overflow-y-auto">
-              <div className="py-2 border-b border-[rgba(255,255,255,0.07)] font-mono text-xs text-[#666980] leading-relaxed flex items-start gap-2 last:border-b-0">
-                <span className="text-[#7c5af0] font-semibold min-w-[24px] flex-shrink-0">→</span>
-                Przeciągnij i upuść SRT / ASS / VTT
-              </div>
-              <div className="py-2 border-b border-[rgba(255,255,255,0.07)] font-mono text-xs text-[#666980] leading-relaxed flex items-start gap-2 last:border-b-0">
-                <span className="text-[#7c5af0] font-semibold min-w-[24px] flex-shrink-0">→</span>
-                Automatyczne wykrywanie języka źródłowego
-              </div>
-              <div className="py-2 border-b border-[rgba(255,255,255,0.07)] font-mono text-xs text-[#666980] leading-relaxed flex items-start gap-2 last:border-b-0">
-                <span className="text-[#7c5af0] font-semibold min-w-[24px] flex-shrink-0">→</span>
-                11 silników AI — lokalnych i chmurowych
-              </div>
-              <div className="py-2 border-b border-[rgba(255,255,255,0.07)] font-mono text-xs text-[#666980] leading-relaxed flex items-start gap-2 last:border-b-0">
-                <span className="text-[#7c5af0] font-semibold min-w-[24px] flex-shrink-0">→</span>
-                <span className="text-green">✨ Podgląd na żywo</span> - tłumaczenia pojawiają się w czasie rzeczywistym
-              </div>
-              <div className="py-2 font-mono text-xs text-[#666980] leading-relaxed flex items-start gap-2">
-                <span className="text-[#7c5af0] font-semibold min-w-[24px] flex-shrink-0">→</span>
-                Gotowy plik trafia automatycznie do biblioteki
+              {/* Info / tips */}
+              <div className="bg-[var(--s2)] border border-[var(--border)] rounded-[var(--rl)] overflow-hidden">
+                <div className="h-px bg-gradient-to-r from-transparent via-[var(--adim2)] to-transparent"></div>
+                <div className="p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <i className="bi bi-info-circle text-[var(--amber)] text-sm"></i>
+                    <span className="text-xs font-semibold text-[var(--text2)] tracking-wide">INFO</span>
+                  </div>
+                  <div className="space-y-2.5">
+                    {[
+                      { icon:'bi-film',     text:'SRT · ASS · SSA · VTT',          color:'var(--amber)' },
+                      { icon:'bi-translate',text:'Auto-detect języka źródłowego',   color:'var(--blue)'  },
+                      { icon:'bi-eye',      text:'Podgląd na żywo podczas tłum.',   color:'var(--green)' },
+                      { icon:'bi-cpu',      text:'11 silników AI — local + cloud',  color:'var(--purple)'},
+                      { icon:'bi-shield',   text:'Dane zostają lokalnie (local AI)', color:'var(--cyan)'  },
+                    ].map(({icon,text,color},i) => (
+                      <div key={i} className="flex items-start gap-2.5 text-[11px] text-[var(--muted)]">
+                        <i className={`bi ${icon} text-xs mt-0.5 flex-shrink-0`} style={{color}}></i>
+                        <span>{text}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
+
+        <div className="h-px bg-gradient-to-r from-transparent via-[var(--border)] to-transparent"></div>
       </div>
 
-      <ConfigModal
-        isOpen={configModal.isOpen}
-        onClose={() => setConfigModal({ isOpen: false, engine: '', config: null })}
-        engine={configModal.engine}
-        config={configModal.config}
-        onSave={handleSaveConfig}
-        onTest={handleTestEngine}
-      />
-
-      <TestModal
-        isOpen={testModal.isOpen}
-        onClose={() => setTestModal({ isOpen: false, isLoading: false, result: null })}
-        result={testModal.result}
-        isLoading={testModal.isLoading}
-      />
-    </div>
+      <ConfigModal isOpen={cfgModal.open} onClose={()=>setCfgModal({open:false,engine:'',config:null})}
+        engine={cfgModal.engine} config={cfgModal.config} onSave={handleSaveConfig} onTest={handleTestEngine} />
+      <TestModal isOpen={testModal.open} onClose={()=>setTestModal({open:false,loading:false,result:null})}
+        result={testModal.result} isLoading={testModal.loading} />
+    </>
   )
 }

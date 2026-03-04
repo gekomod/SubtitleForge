@@ -184,17 +184,18 @@ export async function POST(request: NextRequest) {
     await writeFile(filepath, buffer)
 
     const content = buffer.toString('utf-8')
-    
-    const textForDetection = extractTextForDetection(content, file.name)
+    // Normalize line endings before counting (Windows CRLF fix)
+    const normalizedContent = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+    const textForDetection = extractTextForDetection(normalizedContent, file.name)
     const detectedLang = textForDetection ? detectLanguage(textForDetection) : 'en'
     
     let blocksCount = 0
     if (ext === '.ass' || ext === '.ssa') {
-      blocksCount = countASSBlocks(content)
+      blocksCount = countASSBlocks(normalizedContent)
     } else if (ext === '.vtt') {
-      blocksCount = countVTTBlocks(content)
+      blocksCount = countVTTBlocks(normalizedContent)
     } else {
-      blocksCount = countSRTBlocks(content)
+      blocksCount = countSRTBlocks(normalizedContent)
     }
 
     const fileType = ext === '.ass' || ext === '.ssa' ? 'ASS' : ext === '.vtt' ? 'VTT' : 'SRT'

@@ -113,11 +113,13 @@ export async function POST(request: NextRequest) {
     })
     translationQueues.set(taskId, queue)
 
-    // Uruchom tłumaczenie w tle
+    console.log(`Starting translateFile: uploads/${filename} → translated/${outputFilename} (${totalBlocks} blocks, engine: ${engine})`)
+
+    // Uruchom tłumaczenie w tle — używamy RZECZYWISTEJ nazwy pliku (filename), nie saved_filename
     translateFile(
-      saved_filename,
+      filename,
       outputFilename,
-      { engine, source_lang, target_lang, totalBlocks, ...config }, // Przekaż totalBlocks do workera
+      { engine, source_lang, target_lang, totalBlocks, ...config },
       (progress, current, total, liveData) => {
         // Aktualizuj progress w store
         translationProgress.set(taskId, {
