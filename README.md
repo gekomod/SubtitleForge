@@ -4,7 +4,7 @@
 
 ### Cinema-grade AI subtitle translation studio
 
-**[subtitleforge.pl](https://subtitleforge.pl)** · [Report Bug](https://github.com/yourusername/subtitleforge/issues) · [Request Feature](https://github.com/yourusername/subtitleforge/issues)
+**[subtitleforge.pl](https://subtitleforge.pl)** · [Report Bug](https://github.com/gekomod/SubtitleForge/issues) · [Request Feature](https://github.com/gekomod/SubtitleForge/issues)
 
 [![Next.js](https://img.shields.io/badge/Next.js_14-black?style=flat-square&logo=next.js)](https://nextjs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://typescriptlang.org)
